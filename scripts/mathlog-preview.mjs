@@ -1077,11 +1077,13 @@ function resolvePreviewAssetPath(src, currentDir) {
 }
 
 function preprocessMathlogMarkdown(markdown, { currentDir = "" } = {}) {
-  return markdown.replace(
-    /!\[([^\]]*)\]\((\S+)\s+=(\d+)\)/g,
-    (_match, alt, src, width) =>
-      `<img src="${escapeAttribute(resolvePreviewAssetPath(src, currentDir))}" alt="${escapeAttribute(alt)}" style="max-width: ${escapeAttribute(width)}px; width: 100%;">`,
-  );
+  return markdown
+    .replace(/([^\s&])&&&(\s*)(?=\r?\n|$)/g, "$1\n&&&$2")
+    .replace(
+      /!\[([^\]]*)\]\((\S+)\s+=(\d+)\)/g,
+      (_match, alt, src, width) =>
+        `<img src="${escapeAttribute(resolvePreviewAssetPath(src, currentDir))}" alt="${escapeAttribute(alt)}" style="max-width: ${escapeAttribute(width)}px; width: 100%;">`,
+    );
 }
 
 function createMarkdownIt() {

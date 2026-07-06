@@ -325,6 +325,37 @@ test("server-renders XyPic diagrams", async () => {
   }
 });
 
+test("renders plain Mathlog boxes with inline closing markers", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-plain-box-"));
+  const contentDir = path.join(root, "public");
+  await fsp.mkdir(contentDir, { recursive: true });
+  await fsp.writeFile(
+    path.join(contentDir, "plain-box.md"),
+    [
+      "# box",
+      "",
+      "&&& 補足 [plain-note]",
+      "本文末尾で閉じる形式ブロック。&&&",
+      "",
+      "[[plain-note]]",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const server = await startPreviewServer(contentDir);
+  try {
+    const html = await fetch(server.url).then((res) => res.text());
+    assert.match(html, /class="mathlog-box mathlog-box--plain" id="plain-note"/);
+    assert.match(html, /<div class="mathlog-box__title">補足<\/div>/);
+    assert.match(html, /本文末尾で閉じる形式ブロック。/);
+    assert.match(html, /class="mathlog-reference" href="#plain-note">補足<\/a>/);
+    assert.doesNotMatch(html, /&&&/);
+  } finally {
+    await server.stop();
+  }
+});
+
 test("reports content state changes for auto reload", async () => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-state-"));
   const contentDir = path.join(root, "public");
