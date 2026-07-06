@@ -68,7 +68,9 @@ test("renders representative Mathlog syntax", async () => {
     assert.match(html, /<a href="https:\/\/mathlog.info\/"[^>]*>Mathlog<\/a>/);
     assert.match(html, /<a href="https:\/\/opthub.notion.site\/1ca318bcf9ac8195ad0af2a1ae8319e0"[^>]*>公式リファレンス<\/a>/);
     assert.match(html, /class="article-nav__link article-nav__link--active" href="\/\?file=mathlog-syntax.md"/);
-    assert.match(html, /<div class="preview-meta">mathlog-syntax.md<\/div>/);
+    assert.match(html, /<span>Mathlog syntax preview<\/span><small>mathlog-syntax.md<\/small>/);
+    assert.match(html, /<div class="preview-meta">mathlog-syntax.md <span class="preview-meta__badge">syntax<\/span><\/div>/);
+    assert.doesNotMatch(html, /title: Mathlog syntax preview/);
     assert.match(html, /<h2 id="mathlog-syntax-preview">Mathlog syntax preview<\/h2>/);
     assert.match(html, /<h3 id="heading-label">ラベル付き見出し<\/h3>/);
     assert.match(html, /class="mathlog-math mathlog-math--inline">\\\(x_i&gt;0\\\)<\/span>/);
@@ -96,6 +98,7 @@ test("creates an article from the CLI", async () => {
   const [code] = await once(child, "exit");
   assert.equal(code, 0);
   const markdown = await fsp.readFile(path.join(contentDir, "newArticle001.md"), "utf8");
+  assert.match(markdown, /^title: newArticle001/m);
   assert.match(markdown, /^# newArticle001/m);
 });
 
@@ -113,6 +116,7 @@ test("initializes a content directory", async () => {
   const [code] = await once(child, "exit");
   assert.equal(code, 0);
   const markdown = await fsp.readFile(path.join(contentDir, "welcome.md"), "utf8");
+  assert.match(markdown, /^title: welcome/m);
   assert.match(markdown, /^# welcome/m);
 });
 

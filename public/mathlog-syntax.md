@@ -1,3 +1,10 @@
+---
+title: Mathlog syntax preview
+tags:
+  - syntax
+private: false
+---
+
 # Mathlog syntax preview
 
 ## ラベル付き見出し [heading-label]

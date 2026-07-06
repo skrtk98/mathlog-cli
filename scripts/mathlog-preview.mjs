@@ -228,6 +228,13 @@ function sanitizeArticleBasename(value) {
 
 function createArticleTemplate(basename) {
   return [
+    "---",
+    `title: ${basename}`,
+    "tags:",
+    '  - ""',
+    "private: false",
+    "---",
+    "",
     `# ${basename}`,
     "",
     "ここに本文を書きます。",
@@ -237,6 +244,13 @@ function createArticleTemplate(basename) {
 
 function createWelcomeTemplate() {
   return [
+    "---",
+    "title: welcome",
+    "tags:",
+    '  - ""',
+    "private: false",
+    "---",
+    "",
     "# welcome",
     "",
     "Mathlog の記事をここに書きます。",
@@ -1244,6 +1258,56 @@ async function renderMarkdown(markdown) {
   return md.renderer.render(tokens, md.options, env);
 }
 
+function parseFrontMatter(markdown) {
+  if (!markdown.startsWith("---\n")) {
+    return { markdown, meta: {} };
+  }
+
+  const endIndex = markdown.indexOf("\n---", 4);
+  if (endIndex === -1) {
+    return { markdown, meta: {} };
+  }
+
+  const raw = markdown.slice(4, endIndex).trim();
+  const body = markdown.slice(endIndex).replace(/^\n---\s*\n?/, "");
+  const meta = {};
+  const lines = raw.split("\n");
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!match) {
+      continue;
+    }
+
+    const key = match[1];
+    const value = match[2].trim();
+    if (value === "") {
+      const values = [];
+      for (let next = index + 1; next < lines.length; next += 1) {
+        const itemMatch = lines[next].match(/^\s*-\s*(.*)$/);
+        if (!itemMatch) {
+          break;
+        }
+        values.push(itemMatch[1].replace(/^["']|["']$/g, ""));
+        index = next;
+      }
+      meta[key] = values;
+    } else if (value === "true" || value === "false") {
+      meta[key] = value === "true";
+    } else {
+      meta[key] = value.replace(/^["']|["']$/g, "");
+    }
+  }
+
+  return { markdown: body, meta };
+}
+
+async function readArticleFile(filePath) {
+  const source = await fsp.readFile(filePath, "utf8");
+  return parseFrontMatter(source);
+}
+
 async function listMarkdownFiles(contentRoot, currentDir = contentRoot) {
   const entries = await fsp.readdir(currentDir, { withFileTypes: true });
   const files = [];
@@ -1261,9 +1325,11 @@ async function listMarkdownFiles(contentRoot, currentDir = contentRoot) {
 
     if (entry.isFile() && path.extname(entry.name).toLowerCase() === ".md") {
       const relativePath = path.relative(contentRoot, entryPath).split(path.sep).join("/");
+      const { meta } = await readArticleFile(entryPath);
       files.push({
         relativePath,
-        title: path.parse(entry.name).name,
+        title: meta.title || path.parse(entry.name).name,
+        meta,
         filePath: entryPath,
       });
     }
@@ -1287,10 +1353,23 @@ function renderArticleNav(articles, selectedPath) {
 ${articles
   .map((article) => {
     const active = article.relativePath === selectedPath ? " article-nav__link--active" : "";
-    return `<li><a class="article-nav__link${active}" href="/?file=${encodeURIComponent(article.relativePath)}"><span>${escapeHtml(article.title)}</span><small>${escapeHtml(article.relativePath)}</small></a></li>`;
+    const privateMark = article.meta?.private ? '<span class="article-nav__badge">private</span>' : "";
+    return `<li><a class="article-nav__link${active}" href="/?file=${encodeURIComponent(article.relativePath)}"><span>${escapeHtml(article.title)}${privateMark}</span><small>${escapeHtml(article.relativePath)}</small></a></li>`;
   })
   .join("\n")}
 </ol>`;
+}
+
+function renderArticleMeta(selectedPath, meta) {
+  if (!selectedPath) {
+    return "No article selected";
+  }
+  const tags = Array.isArray(meta?.tags) ? meta.tags.filter(Boolean) : [];
+  const badges = [
+    meta?.private ? '<span class="preview-meta__badge">private</span>' : "",
+    ...tags.map((tag) => `<span class="preview-meta__badge">${escapeHtml(tag)}</span>`),
+  ].filter(Boolean);
+  return `${escapeHtml(selectedPath)}${badges.length > 0 ? ` ${badges.join(" ")}` : ""}`;
 }
 
 async function loadHighlightCss() {
@@ -1525,6 +1604,17 @@ ${highlightCss}
         color: var(--muted);
       }
 
+      .article-nav__badge {
+        display: inline-block;
+        margin-left: 0.4rem;
+        padding: 0.05rem 0.35rem;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 400;
+      }
+
       .article-nav__empty {
         padding: 16px;
       }
@@ -1540,6 +1630,15 @@ ${highlightCss}
         color: var(--muted);
         font-size: 0.9rem;
         overflow-wrap: anywhere;
+      }
+
+      .preview-meta__badge {
+        display: inline-block;
+        margin-left: 0.4rem;
+        padding: 0.05rem 0.4rem;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: #fff;
       }
 
       main.markdown-body {
@@ -2116,7 +2215,7 @@ ${highlightCss}
         ${renderArticleNav(articles, selectedPath)}
       </aside>
       <div class="preview-pane">
-        <div class="preview-meta">${selectedPath ? escapeHtml(selectedPath) : "No article selected"}</div>
+        <div class="preview-meta">${renderArticleMeta(selectedPath, articles.find((article) => article.relativePath === selectedPath)?.meta || {})}</div>
         <main class="markdown-body">
 ${body}
         </main>
@@ -2131,11 +2230,11 @@ async function renderHtml(contentRoot, selectedPath, { embedFonts = false } = {}
   const articles = await listMarkdownFiles(contentRoot);
   const selectedArticle =
     articles.find((article) => article.relativePath === selectedPath) || articles[0] || null;
-  const markdown = selectedArticle
-    ? await fsp.readFile(selectedArticle.filePath, "utf8")
-    : "# No articles\n\nCreate Markdown files under `public/`.";
+  const article = selectedArticle
+    ? await readArticleFile(selectedArticle.filePath)
+    : { markdown: "# No articles\n\nCreate Markdown files under `public`.", meta: {} };
   const [body, highlightCss] = await Promise.all([
-    renderMarkdown(markdown),
+    renderMarkdown(article.markdown),
     loadHighlightCss(),
   ]);
   return createHtmlDocument({
