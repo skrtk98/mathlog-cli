@@ -14,13 +14,10 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@viz-js/viz": "^3.25.0",
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.0",
     "markdown-it-deflist": "^3.0.0",
-    "markdown-it-diagram": "^1.1.4",
     "markdown-it-multimd-table": "^4.2.3",
-    "mathjax-full": "^3.2.2",
-    "mermaid": "^11.14.0"
+    "mathjax-full": "^3.2.2"
   }
 }

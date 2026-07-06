@@ -195,6 +195,28 @@ test("renders an empty project without a hard-coded public directory message", a
   }
 });
 
+test("renders non-Mathlog diagram fences as code blocks", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-code-fence-"));
+  const contentDir = path.join(root, "public");
+  await fsp.mkdir(contentDir, { recursive: true });
+  await fsp.writeFile(
+    path.join(contentDir, "diagram.md"),
+    ["# diagram", "", "```mermaid", "graph TD", "  A --> B", "```", ""].join("\n"),
+    "utf8",
+  );
+
+  const server = await startPreviewServer(contentDir);
+  try {
+    const html = await fetch(server.url).then((res) => res.text());
+    assert.match(html, /<div class="code-block" data-language="mermaid">/);
+    assert.match(html, /graph TD/);
+    assert.doesNotMatch(html, /class="mermaid"/);
+    assert.doesNotMatch(html, /data-save-svg/);
+  } finally {
+    await server.stop();
+  }
+});
+
 test("reports content state changes for auto reload", async () => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-state-"));
   const contentDir = path.join(root, "public");

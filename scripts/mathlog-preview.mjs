@@ -12,25 +12,14 @@ import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const MarkdownIt = require("markdown-it");
 const markdownItDeflist = require("markdown-it-deflist");
-const markdownItDiagram = require("markdown-it-diagram");
 const hljs = require("highlight.js");
 const multimdTable = require("markdown-it-multimd-table");
-const { instance: createViz } = require("@viz-js/viz");
 
 const SCRIPT_FILE = fileURLToPath(import.meta.url);
 const SCRIPT_DIR = path.dirname(SCRIPT_FILE);
 const DOCS_ROOT = path.resolve(SCRIPT_DIR, "..");
 const HIGHLIGHT_THEME_FILE = require.resolve("highlight.js/styles/github.css");
-const MERMAID_MODULE_FILE = path.join(
-  DOCS_ROOT,
-  "node_modules",
-  "mermaid",
-  "dist",
-  "mermaid.esm.min.mjs",
-);
-const MERMAID_DIST_DIR = path.join(DOCS_ROOT, "node_modules", "mermaid", "dist");
 const MATHJAX_DIST_DIR = path.join(DOCS_ROOT, "node_modules", "mathjax-full", "es5");
-const DOT_LANGUAGES = new Set(["dot", "graphviz", "gv"]);
 const DEFAULT_CONTENT_DIR = "public";
 const DEFAULT_HOST = "localhost";
 const DEFAULT_PORT = 8888;
@@ -53,7 +42,6 @@ const MATHLOG_BOX_TYPES = new Map([
   ["exc", "問題"],
   ["rem", "注意"],
 ]);
-let vizInstancePromise;
 let highlightCssPromise;
 let packageVersion;
 
@@ -272,7 +260,6 @@ function parsePort(args, configuredPort) {
 }
 
 function resetRenderState() {
-  vizInstancePromise = undefined;
   highlightCssPromise = undefined;
 }
 
@@ -568,15 +555,6 @@ function renderCodeBlock(code, language) {
   <pre><code class="hljs${languageClass}">${highlighted}</code></pre>
   <template class="code-block__source">${escapeHtml(code)}</template>
 </div>\n`;
-}
-
-function renderDiagramShell(innerHtml, kind) {
-  return `<div class="diagram-shell" data-diagram-kind="${escapeAttribute(kind)}">
-  <div class="diagram-actions">
-    <button class="action-button diagram-action" type="button" data-save-svg>Save SVG</button>
-  </div>
-  ${innerHtml}
-</div>`;
 }
 
 function isEscapedDelimiter(source, index) {
@@ -1053,25 +1031,6 @@ function preprocessMathlogMarkdown(markdown, { currentDir = "" } = {}) {
   );
 }
 
-function getVizInstance() {
-  if (!vizInstancePromise) {
-    vizInstancePromise = createViz();
-  }
-  return vizInstancePromise;
-}
-
-async function renderDotToSvg(source) {
-  const viz = await getVizInstance();
-  const svg = await viz.renderString(source, {
-    format: "svg",
-    engine: "dot",
-  });
-  return svg
-    .replace(/^<\?xml[\s\S]*?\?>\s*/i, "")
-    .replace(/<!DOCTYPE[\s\S]*?>\s*/i, "")
-    .trim();
-}
-
 function createMarkdownIt() {
   const md = new MarkdownIt({
     html: true,
@@ -1086,11 +1045,6 @@ function createMarkdownIt() {
   });
 
   md.use(markdownItDeflist);
-
-  md.use(markdownItDiagram, {
-    showController: false,
-    imageFormat: "svg",
-  });
 
   md.inline.ruler.before("escape", "math_inline", mathInlineRule);
   md.block.ruler.before("fence", "math_block", mathBlockRule, {
@@ -1108,9 +1062,6 @@ function createMarkdownIt() {
   md.inline.ruler.before("link", "mathlog_reference", mathlogReferenceRule);
 
   const seenIds = new Map();
-  const diagramFence = md.renderer.rules.fence
-    ? md.renderer.rules.fence.bind(md.renderer.rules)
-    : null;
   const defaultLinkOpen =
     md.renderer.rules.link_open ??
     ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options));
@@ -1185,45 +1136,10 @@ function createMarkdownIt() {
   md.renderer.rules.fence = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
     const language = getFenceLanguage(token.info);
-    if (DOT_LANGUAGES.has(language) && token.meta?.renderedHtml) {
-      return `${token.meta.renderedHtml}\n`;
-    }
-    if (language === "mermaid" && diagramFence) {
-      return `${renderDiagramShell(diagramFence(tokens, idx, options, env, self), "mermaid")}\n`;
-    }
     return renderCodeBlock(token.content, language);
   };
 
   return md;
-}
-
-async function preprocessFenceTokens(tokens) {
-  for (const token of tokens) {
-    if (token.type === "fence") {
-      const language = getFenceLanguage(token.info);
-      if (DOT_LANGUAGES.has(language)) {
-        try {
-          const svg = await renderDotToSvg(token.content);
-          token.meta = {
-            ...(token.meta || {}),
-            renderedHtml: renderDiagramShell(
-              `<figure class="diagram diagram-dot">${svg}</figure>`,
-              "dot",
-            ),
-          };
-        } catch (error) {
-          token.meta = {
-            ...(token.meta || {}),
-            renderedHtml: `<pre class="diagram diagram-error">${escapeHtml(token.content)}\n\n[dot render error] ${escapeHtml(error.message)}</pre>`,
-          };
-        }
-      }
-    }
-
-    if (Array.isArray(token.children) && token.children.length > 0) {
-      await preprocessFenceTokens(token.children);
-    }
-  }
 }
 
 async function renderMarkdown(markdown, { currentDir = "" } = {}) {
@@ -1231,7 +1147,6 @@ async function renderMarkdown(markdown, { currentDir = "" } = {}) {
   const env = { currentDir };
   const tokens = md.parse(preprocessMathlogMarkdown(markdown, { currentDir }), env);
   assignMathlogBoxMetadata(tokens, env);
-  await preprocessFenceTokens(tokens);
   return md.renderer.render(tokens, md.options, env);
 }
 
@@ -1678,7 +1593,7 @@ ${highlightCss}
         padding-bottom: 0.25em;
       }
 
-      p, ul, ol, blockquote, pre, table, .table-scroll, .code-block, .diagram {
+      p, ul, ol, blockquote, pre, table, .table-scroll, .code-block {
         margin-top: 0;
         margin-bottom: 1rem;
       }
@@ -1931,40 +1846,6 @@ ${highlightCss}
         font-family: ${fontFamily};
       }
 
-      .diagram {
-        overflow-x: auto;
-      }
-
-      .diagram svg {
-        display: block;
-        max-width: 100%;
-        height: auto;
-      }
-
-      .diagram-dot,
-      .diagram-m {
-        padding: 1rem;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        background: #fff;
-      }
-
-      .diagram-shell {
-        margin-bottom: 1rem;
-      }
-
-      .diagram-actions {
-        display: flex;
-        justify-content: flex-end;
-        margin-bottom: 0.45rem;
-      }
-
-      .diagram-error {
-        border-color: #cf222e;
-        color: #cf222e;
-        white-space: pre-wrap;
-      }
-
       @page {
         size: A3;
         margin: 10mm;
@@ -1994,8 +1875,7 @@ ${highlightCss}
           border: 0;
         }
 
-        .action-button,
-        .diagram-actions {
+        .action-button {
           display: none !important;
         }
       }
@@ -2051,8 +1931,6 @@ ${highlightCss}
     </script>
     <script src="/vendor/mathjax/tex-svg-full.js"></script>
     <script type="module">
-      import mermaid from "/vendor/mermaid.esm.min.mjs";
-
       window.__markdownItRenderReady__ = false;
 
       function setActionState(button, label) {
@@ -2113,49 +1991,6 @@ ${highlightCss}
         }
       }
 
-      function buildDiagramFilename(container, index) {
-        const title = (document.title || "diagram")
-          .trim()
-          .toLowerCase()
-          .replace(/[^a-z0-9._-]+/g, "-");
-        const kind = container.dataset.diagramKind || "diagram";
-        const sequence = String(index + 1).padStart(2, "0");
-        return (title || "diagram") + "-" + kind + "-" + sequence + ".svg";
-      }
-
-      function attachDiagramActions() {
-        const containers = Array.from(document.querySelectorAll(".diagram-shell"));
-        containers.forEach((container, index) => {
-          const button = container.querySelector("[data-save-svg]");
-          if (!button || button.dataset.bound === "true") {
-            return;
-          }
-          button.dataset.bound = "true";
-          button.addEventListener("click", () => {
-            const svg = container.querySelector("svg");
-            if (!svg) {
-              setActionState(button, "No SVG");
-              window.setTimeout(() => setActionState(button, "Save SVG"), 1500);
-              return;
-            }
-
-            const blob = new Blob([svg.outerHTML], {
-              type: "image/svg+xml;charset=utf-8",
-            });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = buildDiagramFilename(container, index);
-            document.body.append(link);
-            link.click();
-            link.remove();
-            URL.revokeObjectURL(url);
-            setActionState(button, "Saved");
-            window.setTimeout(() => setActionState(button, "Save SVG"), 1500);
-          });
-        });
-      }
-
       function attachNewArticleAction() {
         const button = document.querySelector("[data-new-article]");
         if (!button) {
@@ -2211,24 +2046,11 @@ ${highlightCss}
       }
 
       async function main() {
-        mermaid.initialize({
-          startOnLoad: false,
-          theme: "default",
-          securityLevel: "loose",
-          fontFamily: ${JSON.stringify(fontFamily.replaceAll('"', ""))},
-        });
-
-        const nodes = Array.from(document.querySelectorAll(".mermaid"));
-        if (nodes.length > 0) {
-          await mermaid.run({ nodes });
-        }
-
         if (window.MathJax?.typesetPromise) {
           await window.MathJax.typesetPromise([document.querySelector(".markdown-body")]);
         }
 
         attachCodeActions();
-        attachDiagramActions();
         attachNewArticleAction();
         attachAutoReload();
 
@@ -2387,13 +2209,6 @@ async function createServer({ contentRoot, embedFonts = false, host = DEFAULT_HO
         return;
       }
 
-      if (pathname === "/vendor/mermaid.esm.min.mjs") {
-        const body = await fsp.readFile(MERMAID_MODULE_FILE);
-        res.writeHead(200, { "content-type": getContentType(MERMAID_MODULE_FILE) });
-        res.end(body);
-        return;
-      }
-
       if (pathname.startsWith("/vendor/")) {
         if (pathname.startsWith("/vendor/mathjax/")) {
           const mathJaxFile = path.join(MATHJAX_DIST_DIR, pathname.replace(/^\/vendor\/mathjax\//, ""));
@@ -2409,16 +2224,8 @@ async function createServer({ contentRoot, embedFonts = false, host = DEFAULT_HO
           return;
         }
 
-        const vendorFile = path.join(MERMAID_DIST_DIR, pathname.replace(/^\/vendor\//, ""));
-        const normalized = path.normalize(vendorFile);
-        if (!normalized.startsWith(MERMAID_DIST_DIR)) {
-          res.writeHead(403);
-          res.end("Forbidden");
-          return;
-        }
-        const body = await fsp.readFile(normalized);
-        res.writeHead(200, { "content-type": getContentType(normalized) });
-        res.end(body);
+        res.writeHead(404);
+        res.end("Not found");
         return;
       }
 
