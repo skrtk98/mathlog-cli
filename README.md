@@ -23,6 +23,7 @@ npm run preview
 ```
 
 既定では Qiita CLI と同じく `public/` 配下の Markdown を一覧表示します。プレビュー画面の「新規記事作成」ボタンから `public/` に記事を追加できます。
+Markdown や画像を保存すると、開いているプレビューは自動で再読み込みされます。
 
 CLI から記事を作成する:
 

@@ -157,3 +157,23 @@ test("creates an article from the preview API", async () => {
     await server.stop();
   }
 });
+
+test("reports content state changes for auto reload", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-state-"));
+  const contentDir = path.join(root, "public");
+  await fsp.mkdir(contentDir, { recursive: true });
+  const filePath = path.join(contentDir, "state.md");
+  await fsp.writeFile(filePath, "# state\n", "utf8");
+
+  const server = await startPreviewServer(contentDir);
+  try {
+    const before = await fetch(new URL("/api/state", server.url)).then((res) => res.json());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await fsp.writeFile(filePath, "# state\n\nupdated\n", "utf8");
+    const after = await fetch(new URL("/api/state", server.url)).then((res) => res.json());
+    assert.notEqual(after.version, before.version);
+    assert.equal(after.fileCount, before.fileCount);
+  } finally {
+    await server.stop();
+  }
+});

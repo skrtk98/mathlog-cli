@@ -1414,6 +1414,38 @@ async function listMarkdownFiles(contentRoot, currentDir = contentRoot) {
   return files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 }
 
+async function collectContentState(contentRoot, currentDir = contentRoot) {
+  const entries = await fsp.readdir(currentDir, { withFileTypes: true });
+  let latestMtimeMs = 0;
+  let fileCount = 0;
+
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) {
+      continue;
+    }
+
+    const entryPath = path.join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      const childState = await collectContentState(contentRoot, entryPath);
+      latestMtimeMs = Math.max(latestMtimeMs, childState.latestMtimeMs);
+      fileCount += childState.fileCount;
+      continue;
+    }
+
+    if (entry.isFile()) {
+      const stats = await fsp.stat(entryPath);
+      latestMtimeMs = Math.max(latestMtimeMs, stats.mtimeMs);
+      fileCount += 1;
+    }
+  }
+
+  return {
+    latestMtimeMs,
+    fileCount,
+    version: `${fileCount}:${Math.floor(latestMtimeMs)}`,
+  };
+}
+
 function renderOfficialLinks() {
   return OFFICIAL_LINKS
     .map(([label, href]) => `<a href="${escapeAttribute(href)}" target="_blank" rel="noreferrer noopener">${escapeHtml(label)}</a>`)
@@ -2233,6 +2265,30 @@ ${highlightCss}
         });
       }
 
+      function attachAutoReload() {
+        let currentVersion = "";
+        const check = async () => {
+          try {
+            const response = await fetch("/api/state", { cache: "no-store" });
+            if (!response.ok) {
+              return;
+            }
+            const state = await response.json();
+            if (!currentVersion) {
+              currentVersion = state.version || "";
+              return;
+            }
+            if (state.version && state.version !== currentVersion) {
+              window.location.reload();
+            }
+          } catch {
+            // Keep preview usable even while files are being edited.
+          }
+        };
+        window.setInterval(check, 1500);
+        check();
+      }
+
       async function main() {
         mermaid.initialize({
           startOnLoad: false,
@@ -2253,6 +2309,7 @@ ${highlightCss}
         attachCodeActions();
         attachDiagramActions();
         attachNewArticleAction();
+        attachAutoReload();
 
         window.__markdownItRenderReady__ = true;
         document.documentElement.dataset.renderReady = "true";
@@ -2372,6 +2429,16 @@ async function createServer({ contentRoot, embedFonts = false, host = DEFAULT_HO
         const article = await createArticleFile(contentRoot, payload.basename);
         res.writeHead(201, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(article));
+        return;
+      }
+
+      if (pathname === "/api/state" && req.method === "GET") {
+        const state = await collectContentState(contentRoot);
+        res.writeHead(200, {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        res.end(JSON.stringify(state));
         return;
       }
 
