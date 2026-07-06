@@ -24,6 +24,7 @@ const DEFAULT_CONTENT_DIR = "public";
 const DEFAULT_HOST = "localhost";
 const DEFAULT_PORT = 3141;
 const CONFIG_FILE_NAME = "mathlog.config.json";
+const MACROS_FILE_NAME = "mathlog.macros.json";
 const OFFICIAL_LINKS = [
   ["Mathlog", "https://mathlog.info/"],
   ["公式リファレンス", "https://opthub.notion.site/1ca318bcf9ac8195ad0af2a1ae8319e0"],
@@ -530,6 +531,100 @@ function escapeHtml(value) {
 
 function escapeAttribute(value) {
   return escapeHtml(value).replaceAll('"', "&quot;");
+}
+
+function escapeScriptJson(value) {
+  return JSON.stringify(value).replaceAll("</", "<\\/");
+}
+
+function createId(prefix) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeMacroCommand(value) {
+  const command = String(value || "").trim();
+  if (!/^\\?[A-Za-z]+$/.test(command)) {
+    throw new Error("Macro command must contain only letters, with an optional leading backslash.");
+  }
+  return command.startsWith("\\") ? command : `\\${command}`;
+}
+
+function normalizeMacroArgs(value) {
+  const args = Number.parseInt(String(value ?? "0"), 10);
+  if (!Number.isInteger(args) || args < 0 || args > 9) {
+    throw new Error("Macro argument count must be an integer from 0 to 9.");
+  }
+  return args;
+}
+
+function normalizeMacroPackageId(value) {
+  return String(value || "").trim();
+}
+
+function normalizeMacroLibrary(raw = {}) {
+  const packages = Array.isArray(raw.packages)
+    ? raw.packages
+        .map((item) => ({
+          id: String(item?.id || "").trim(),
+          name: String(item?.name || "").trim(),
+          enabled: item?.enabled !== false,
+        }))
+        .filter((item) => item.id && item.name)
+    : [];
+  const packageIds = new Set(packages.map((item) => item.id));
+  const macros = Array.isArray(raw.macros)
+    ? raw.macros
+        .map((item) => {
+          try {
+            return {
+              id: String(item?.id || "").trim(),
+              command: normalizeMacroCommand(item?.command),
+              args: normalizeMacroArgs(item?.args),
+              body: String(item?.body || "").trim(),
+              packageId: normalizeMacroPackageId(item?.packageId),
+            };
+          } catch {
+            return null;
+          }
+        })
+        .filter((item) => item && item.id && item.body && (!item.packageId || packageIds.has(item.packageId)))
+    : [];
+  return { version: 1, packages, macros };
+}
+
+function getMacrosFilePath() {
+  return path.join(process.cwd(), MACROS_FILE_NAME);
+}
+
+async function readMacroLibrary() {
+  try {
+    const raw = JSON.parse(await fsp.readFile(getMacrosFilePath(), "utf8"));
+    return normalizeMacroLibrary(raw);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return normalizeMacroLibrary();
+    }
+    throw error;
+  }
+}
+
+async function writeMacroLibrary(library) {
+  const normalized = normalizeMacroLibrary(library);
+  await fsp.writeFile(getMacrosFilePath(), `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
+  return normalized;
+}
+
+function buildActiveMathJaxMacros(library) {
+  const enabledPackageIds = new Set(library.packages.filter((item) => item.enabled).map((item) => item.id));
+  const macros = {};
+  for (const macro of library.macros) {
+    if (macro.packageId && !enabledPackageIds.has(macro.packageId)) {
+      continue;
+    }
+    const commandName = macro.command.replace(/^\\/, "");
+    macros[commandName] = macro.args > 0 ? [macro.body, macro.args] : macro.body;
+  }
+  return macros;
 }
 
 function getFenceLanguage(info) {
@@ -1496,6 +1591,38 @@ function renderPreviewHeader(selectedArticle) {
         </header>`;
 }
 
+function renderMacroManager(library) {
+  const packageOptions = library.packages
+    .map((pkg) => `<option value="${escapeAttribute(pkg.id)}">${escapeHtml(pkg.name)}</option>`)
+    .join("");
+  return `<section class="macro-manager" data-macro-manager>
+        <div class="macro-manager__header">
+          <div>
+            <h2>マクロ</h2>
+            <p>Mathlog 互換の TeX マクロを登録します。</p>
+          </div>
+          <button class="action-button" type="button" data-macro-reload>更新</button>
+        </div>
+        <form class="macro-package-form" data-macro-package-form>
+          <input name="name" type="text" placeholder="パッケージ名">
+          <button class="action-button" type="submit">パッケージ追加</button>
+        </form>
+        <div class="macro-package-list" data-macro-package-list></div>
+        <form class="macro-form" data-macro-form>
+          <input name="id" type="hidden">
+          <label>コマンド名<input name="command" type="text" placeholder="\\abs" required></label>
+          <label>引数の個数<select name="args">${Array.from({ length: 10 }, (_item, index) => `<option value="${index}">${index}</option>`).join("")}</select></label>
+          <label>数式<input name="body" type="text" placeholder="\\left| #1 \\right|" required></label>
+          <label>パッケージ<select name="packageId"><option value="">指定なし</option>${packageOptions}</select></label>
+          <div class="macro-form__actions">
+            <button class="new-article-button" type="submit">保存</button>
+            <button class="action-button" type="button" data-macro-cancel>キャンセル</button>
+          </div>
+        </form>
+        <div class="macro-list" data-macro-list></div>
+      </section>`;
+}
+
 async function loadHighlightCss() {
   if (!highlightCssPromise) {
     highlightCssPromise = fsp.readFile(HIGHLIGHT_THEME_FILE, "utf8");
@@ -1510,6 +1637,7 @@ function createHtmlDocument({
   articles = [],
   selectedPath = "",
   contentRoot = "",
+  macroLibrary = normalizeMacroLibrary(),
 }) {
   const fontFamily = '"Segoe UI", "Yu Gothic UI", system-ui, sans-serif';
   const monoFontFamily = 'Consolas, ui-monospace, monospace';
@@ -1609,6 +1737,23 @@ ${highlightCss}
         background: #1a7f37;
       }
 
+      .action-button {
+        appearance: none;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: #fff;
+        color: var(--fg);
+        padding: 0.32rem 0.58rem;
+        font: inherit;
+        font-size: 0.86rem;
+        line-height: 1.2;
+        cursor: pointer;
+      }
+
+      .action-button:hover {
+        background: #eef2f6;
+      }
+
       .app-shell {
         display: grid;
         grid-template-columns: 280px minmax(0, 1fr);
@@ -1679,6 +1824,110 @@ ${highlightCss}
 
       .article-nav__empty {
         padding: 16px;
+      }
+
+      .macro-manager {
+        border-top: 1px solid var(--border);
+        padding: 14px 12px 18px;
+      }
+
+      .macro-manager__header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .macro-manager h2 {
+        margin: 0;
+        border: 0;
+        padding: 0;
+        font-size: 1rem;
+      }
+
+      .macro-manager p {
+        margin: 0.15rem 0 0;
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.4;
+      }
+
+      .macro-package-form,
+      .macro-form {
+        display: grid;
+        gap: 0.55rem;
+        margin-bottom: 0.8rem;
+      }
+
+      .macro-package-form {
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+
+      .macro-form label {
+        display: grid;
+        gap: 0.25rem;
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .macro-package-form input,
+      .macro-form input,
+      .macro-form select {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: #fff;
+        padding: 0.42rem 0.5rem;
+        color: var(--fg);
+        font: inherit;
+      }
+
+      .macro-form__actions,
+      .macro-card__actions,
+      .macro-package-row {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+      }
+
+      .macro-package-list,
+      .macro-list {
+        display: grid;
+        gap: 0.45rem;
+        margin-bottom: 0.85rem;
+      }
+
+      .macro-package-row,
+      .macro-card {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #fff;
+        padding: 0.55rem;
+      }
+
+      .macro-package-row {
+        justify-content: space-between;
+      }
+
+      .macro-package-row strong,
+      .macro-card strong {
+        overflow-wrap: anywhere;
+      }
+
+      .macro-card {
+        display: grid;
+        gap: 0.35rem;
+      }
+
+      .macro-card__meta {
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .macro-card code {
+        overflow-wrap: anywhere;
       }
 
       .preview-pane {
@@ -2072,7 +2321,8 @@ ${highlightCss}
           inlineMath: [["\\\\(", "\\\\)"]],
           displayMath: [["\\\\[", "\\\\]"]],
           processEscapes: true,
-          tags: "ams"
+          tags: "ams",
+          macros: ${escapeScriptJson(buildActiveMathJaxMacros(macroLibrary))}
         },
         svg: {
           fontCache: "global"
@@ -2085,11 +2335,23 @@ ${highlightCss}
     <script src="/vendor/mathjax/tex-svg-full.js"></script>
     <script type="module">
       window.__markdownItRenderReady__ = false;
+      const macroLibrary = ${escapeScriptJson(macroLibrary)};
 
       function setActionState(button, label) {
         if (button) {
           button.textContent = label;
         }
+      }
+
+      function escapeClientHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;");
+      }
+
+      function escapeClientAttribute(value) {
+        return escapeClientHtml(value).replaceAll('"', "&quot;");
       }
 
       function legacyCopy(text) {
@@ -2174,6 +2436,97 @@ ${highlightCss}
         });
       }
 
+      async function requestJson(url, options = {}) {
+        const response = await fetch(url, {
+          ...options,
+          headers: {
+            "content-type": "application/json",
+            ...(options.headers || {})
+          }
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || "Request failed.");
+        }
+        return payload;
+      }
+
+      function renderMacroManager() {
+        const root = document.querySelector("[data-macro-manager]");
+        if (!root) {
+          return;
+        }
+        const packageList = root.querySelector("[data-macro-package-list]");
+        const macroList = root.querySelector("[data-macro-list]");
+        const packageSelect = root.querySelector('select[name="packageId"]');
+        const packages = macroLibrary.packages || [];
+        const macros = macroLibrary.macros || [];
+        packageSelect.innerHTML = '<option value="">指定なし</option>' + packages
+          .map((item) => '<option value="' + escapeClientAttribute(item.id) + '">' + escapeClientHtml(item.name) + '</option>')
+          .join("");
+        packageList.innerHTML = packages.length === 0
+          ? '<p>パッケージはありません。</p>'
+          : packages.map((item) => '<div class="macro-package-row" data-package-id="' + escapeClientAttribute(item.id) + '"><strong>' + escapeClientHtml(item.name) + '</strong><span>' + (item.enabled ? '有効' : '無効') + '</span><button class="action-button" type="button" data-package-toggle>' + (item.enabled ? '無効化' : '有効化') + '</button><button class="action-button" type="button" data-package-delete>削除</button></div>').join("");
+        macroList.innerHTML = macros.length === 0
+          ? '<p>マクロはありません。</p>'
+          : macros.map((item) => {
+              const pkg = packages.find((candidate) => candidate.id === item.packageId);
+              const example = item.args > 0 ? item.command + Array.from({ length: item.args }, (_value, index) => '{x' + (index + 1) + '}').join("") : item.command;
+              return '<article class="macro-card" data-macro-id="' + escapeClientAttribute(item.id) + '"><strong>' + escapeClientHtml(item.command) + '</strong><div class="macro-card__meta">引数: ' + item.args + ' / パッケージ: ' + escapeClientHtml(pkg?.name || '指定なし') + '</div><code>' + escapeClientHtml(item.body) + '</code><div class="macro-card__meta">使用例: ' + escapeClientHtml(example) + '</div><div class="macro-card__actions"><button class="action-button" type="button" data-macro-edit>編集</button><button class="action-button" type="button" data-macro-delete>削除</button></div></article>';
+            }).join("");
+      }
+
+      function attachMacroManager() {
+        const root = document.querySelector("[data-macro-manager]");
+        if (!root) {
+          return;
+        }
+        const form = root.querySelector("[data-macro-form]");
+        const packageForm = root.querySelector("[data-macro-package-form]");
+        root.querySelector("[data-macro-reload]")?.addEventListener("click", () => window.location.reload());
+        root.querySelector("[data-macro-cancel]")?.addEventListener("click", () => form.reset());
+        packageForm?.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const name = new FormData(packageForm).get("name");
+          await requestJson("/api/macro-packages", { method: "POST", body: JSON.stringify({ name }) });
+          window.location.reload();
+        });
+        form?.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const data = Object.fromEntries(new FormData(form));
+          const id = data.id;
+          const url = id ? "/api/macros/" + encodeURIComponent(id) : "/api/macros";
+          await requestJson(url, { method: id ? "PATCH" : "POST", body: JSON.stringify(data) });
+          window.location.reload();
+        });
+        root.addEventListener("click", async (event) => {
+          const target = event.target;
+          const macroCard = target.closest?.("[data-macro-id]");
+          const packageRow = target.closest?.("[data-package-id]");
+          if (target.matches?.("[data-macro-edit]") && macroCard) {
+            const macro = macroLibrary.macros.find((item) => item.id === macroCard.dataset.macroId);
+            if (macro) {
+              form.elements.id.value = macro.id;
+              form.elements.command.value = macro.command;
+              form.elements.args.value = String(macro.args);
+              form.elements.body.value = macro.body;
+              form.elements.packageId.value = macro.packageId || "";
+            }
+          } else if (target.matches?.("[data-macro-delete]") && macroCard) {
+            await requestJson("/api/macros/" + encodeURIComponent(macroCard.dataset.macroId), { method: "DELETE" });
+            window.location.reload();
+          } else if (target.matches?.("[data-package-toggle]") && packageRow) {
+            const pkg = macroLibrary.packages.find((item) => item.id === packageRow.dataset.packageId);
+            await requestJson("/api/macro-packages/" + encodeURIComponent(packageRow.dataset.packageId), { method: "PATCH", body: JSON.stringify({ enabled: !pkg?.enabled }) });
+            window.location.reload();
+          } else if (target.matches?.("[data-package-delete]") && packageRow) {
+            await requestJson("/api/macro-packages/" + encodeURIComponent(packageRow.dataset.packageId), { method: "DELETE" });
+            window.location.reload();
+          }
+        });
+        renderMacroManager();
+      }
+
       function attachAutoReload() {
         let currentVersion = "";
         const check = async () => {
@@ -2205,6 +2558,7 @@ ${highlightCss}
 
         attachCodeActions();
         attachNewArticleAction();
+        attachMacroManager();
         attachAutoReload();
 
         window.__markdownItRenderReady__ = true;
@@ -2242,6 +2596,7 @@ ${highlightCss}
           <small>${escapeHtml(path.relative(DOCS_ROOT, contentRoot) || ".")}</small>
         </div>
         ${renderArticleNav(articles, selectedPath)}
+        ${renderMacroManager(macroLibrary)}
       </aside>
       <div class="preview-pane">
         ${renderPreviewHeader(articles.find((article) => article.relativePath === selectedPath) || null)}
@@ -2257,6 +2612,7 @@ ${body}
 
 async function renderHtml(contentRoot, selectedPath) {
   const articles = await listMarkdownFiles(contentRoot);
+  const macroLibrary = await readMacroLibrary();
   const selectedArticle =
     articles.find((article) => article.relativePath === selectedPath) || articles[0] || null;
   const article = selectedArticle
@@ -2274,6 +2630,7 @@ async function renderHtml(contentRoot, selectedPath) {
     articles,
     selectedPath: selectedArticle?.relativePath || "",
     contentRoot,
+    macroLibrary,
   });
 }
 
@@ -2306,24 +2663,144 @@ function getContentType(filePath) {
 }
 
 async function createServer({ contentRoot, host = DEFAULT_HOST, port = DEFAULT_PORT }) {
+  const readJsonBody = async (req) => {
+    let rawBody = "";
+    req.setEncoding("utf8");
+    for await (const chunk of req) {
+      rawBody += chunk;
+      if (rawBody.length > 16384) {
+        throw new Error("Request body is too large.");
+      }
+    }
+    return JSON.parse(rawBody || "{}");
+  };
+
   const server = http.createServer(async (req, res) => {
     const requestUrl = new URL(req.url || "/", "http://localhost");
     const pathname = requestUrl.pathname;
 
     try {
       if (pathname === "/api/articles" && req.method === "POST") {
-        let rawBody = "";
-        req.setEncoding("utf8");
-        for await (const chunk of req) {
-          rawBody += chunk;
-          if (rawBody.length > 8192) {
-            throw new Error("Request body is too large.");
-          }
-        }
-        const payload = JSON.parse(rawBody || "{}");
+        const payload = await readJsonBody(req);
         const article = await createArticleFile(contentRoot, payload.basename);
         res.writeHead(201, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(article));
+        return;
+      }
+
+      if (pathname === "/api/macros" && req.method === "GET") {
+        const library = await readMacroLibrary();
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(library));
+        return;
+      }
+
+      if (pathname === "/api/macros" && req.method === "POST") {
+        const payload = await readJsonBody(req);
+        const library = await readMacroLibrary();
+        const macro = {
+          id: createId("macro"),
+          command: normalizeMacroCommand(payload.command),
+          args: normalizeMacroArgs(payload.args),
+          body: String(payload.body || "").trim(),
+          packageId: normalizeMacroPackageId(payload.packageId),
+        };
+        if (!macro.body) {
+          throw new Error("Macro formula is required.");
+        }
+        if (macro.packageId && !library.packages.some((pkg) => pkg.id === macro.packageId)) {
+          throw new Error("Macro package was not found.");
+        }
+        library.macros = library.macros.filter((item) => item.command !== macro.command);
+        library.macros.push(macro);
+        const saved = await writeMacroLibrary(library);
+        res.writeHead(201, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(saved));
+        return;
+      }
+
+      const macroMatch = pathname.match(/^\/api\/macros\/([^/]+)$/);
+      if (macroMatch && (req.method === "PATCH" || req.method === "DELETE")) {
+        const id = decodeURIComponent(macroMatch[1]);
+        const library = await readMacroLibrary();
+        const index = library.macros.findIndex((macro) => macro.id === id);
+        if (index === -1) {
+          res.writeHead(404, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: "Macro was not found." }));
+          return;
+        }
+        if (req.method === "DELETE") {
+          library.macros.splice(index, 1);
+        } else {
+          const payload = await readJsonBody(req);
+          const next = {
+            ...library.macros[index],
+            command: normalizeMacroCommand(payload.command),
+            args: normalizeMacroArgs(payload.args),
+            body: String(payload.body || "").trim(),
+            packageId: normalizeMacroPackageId(payload.packageId),
+          };
+          if (!next.body) {
+            throw new Error("Macro formula is required.");
+          }
+          if (next.packageId && !library.packages.some((pkg) => pkg.id === next.packageId)) {
+            throw new Error("Macro package was not found.");
+          }
+          library.macros[index] = next;
+        }
+        const saved = await writeMacroLibrary(library);
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(saved));
+        return;
+      }
+
+      if (pathname === "/api/macro-packages" && req.method === "POST") {
+        const payload = await readJsonBody(req);
+        const name = String(payload.name || "").trim();
+        if (!name) {
+          throw new Error("Package name is required.");
+        }
+        const library = await readMacroLibrary();
+        library.packages.push({ id: createId("pkg"), name, enabled: true });
+        const saved = await writeMacroLibrary(library);
+        res.writeHead(201, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(saved));
+        return;
+      }
+
+      const packageMatch = pathname.match(/^\/api\/macro-packages\/([^/]+)$/);
+      if (packageMatch && (req.method === "PATCH" || req.method === "DELETE")) {
+        const id = decodeURIComponent(packageMatch[1]);
+        const library = await readMacroLibrary();
+        const index = library.packages.findIndex((pkg) => pkg.id === id);
+        if (index === -1) {
+          res.writeHead(404, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ error: "Package was not found." }));
+          return;
+        }
+        if (req.method === "DELETE") {
+          library.packages.splice(index, 1);
+          for (const macro of library.macros) {
+            if (macro.packageId === id) {
+              macro.packageId = "";
+            }
+          }
+        } else {
+          const payload = await readJsonBody(req);
+          if (Object.hasOwn(payload, "name")) {
+            const name = String(payload.name || "").trim();
+            if (!name) {
+              throw new Error("Package name is required.");
+            }
+            library.packages[index].name = name;
+          }
+          if (Object.hasOwn(payload, "enabled")) {
+            library.packages[index].enabled = Boolean(payload.enabled);
+          }
+        }
+        const saved = await writeMacroLibrary(library);
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(saved));
         return;
       }
 
@@ -2382,6 +2859,11 @@ async function createServer({ contentRoot, host = DEFAULT_HOST, port = DEFAULT_P
       res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
       res.end("Not Found");
     } catch (error) {
+      if (pathname.startsWith("/api/")) {
+        res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: error.message }));
+        return;
+      }
       res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
       res.end(`[mathlog-preview] ${error.message}`);
     }

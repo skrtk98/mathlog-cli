@@ -128,7 +128,7 @@ async function startPreviewServer(contentDir, options = {}) {
     process.execPath,
     args,
     {
-      cwd: process.cwd(),
+      cwd: options.cwd || process.cwd(),
       env: { ...process.env, ...(options.env || {}) },
       stdio: [options.stdin || "ignore", "pipe", "pipe"],
     },
@@ -365,6 +365,74 @@ test("serves terminal shortcut input", async () => {
   const [code] = await once(server.child, "exit");
   assert.equal(code, 0);
   assert.match(server.getStdout(), /Shortcuts: r restart, o open, e edit, q quit/);
+});
+
+test("manages Mathlog macros and packages through the preview API", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-macros-"));
+  const contentDir = path.join(root, "public");
+  await fsp.mkdir(contentDir, { recursive: true });
+  await fsp.writeFile(path.join(contentDir, "macro.md"), "Custom macro: $\\abs{x}$\n", "utf8");
+
+  const server = await startPreviewServer(contentDir, { cwd: root });
+  try {
+    const packageResponse = await fetch(new URL("/api/macro-packages", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "記号" }),
+    });
+    assert.equal(packageResponse.status, 201);
+    const withPackage = await packageResponse.json();
+    assert.equal(withPackage.packages[0].name, "記号");
+    assert.equal(withPackage.packages[0].enabled, true);
+
+    const macroResponse = await fetch(new URL("/api/macros", server.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        command: "\\abs",
+        args: 1,
+        body: "\\left| #1 \\right|",
+        packageId: withPackage.packages[0].id,
+      }),
+    });
+    assert.equal(macroResponse.status, 201);
+    const withMacro = await macroResponse.json();
+    assert.equal(withMacro.macros[0].command, "\\abs");
+    assert.equal(withMacro.macros[0].args, 1);
+
+    const html = await fetch(server.url).then((res) => res.text());
+    assert.match(html, /<section class="macro-manager" data-macro-manager>/);
+    assert.match(html, /macros: \{"abs":\["\\\\left\| #1 \\\\right\|",1\]\}/);
+
+    const disableResponse = await fetch(new URL(`/api/macro-packages/${encodeURIComponent(withPackage.packages[0].id)}`, server.url), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    });
+    assert.equal(disableResponse.status, 200);
+    const disabledHtml = await fetch(server.url).then((res) => res.text());
+    assert.match(disabledHtml, /macros: \{\}/);
+
+    const deletePackageResponse = await fetch(new URL(`/api/macro-packages/${encodeURIComponent(withPackage.packages[0].id)}`, server.url), {
+      method: "DELETE",
+    });
+    assert.equal(deletePackageResponse.status, 200);
+    const afterPackageDelete = await deletePackageResponse.json();
+    assert.equal(afterPackageDelete.packages.length, 0);
+    assert.equal(afterPackageDelete.macros[0].packageId, "");
+
+    const deleteMacroResponse = await fetch(new URL(`/api/macros/${encodeURIComponent(withMacro.macros[0].id)}`, server.url), {
+      method: "DELETE",
+    });
+    assert.equal(deleteMacroResponse.status, 200);
+    const afterMacroDelete = await deleteMacroResponse.json();
+    assert.equal(afterMacroDelete.macros.length, 0);
+
+    const persisted = JSON.parse(await fsp.readFile(path.join(root, "mathlog.macros.json"), "utf8"));
+    assert.deepEqual(persisted, { version: 1, packages: [], macros: [] });
+  } finally {
+    await server.stop();
+  }
 });
 
 test("renders an empty project without a hard-coded public directory message", async () => {
