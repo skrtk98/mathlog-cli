@@ -2,6 +2,10 @@
 
 ここで、$x_i>0$ かつ $a \ne 0$ とします。
 
+**太字赤色**、*斜体*、***斜体太字赤色***、~~取り消し~~。
+
+![dummy image](https://example.com/image.png =500)
+
 $$
 \TextCenter
 \sin(\alpha+\beta) = \sin(\alpha)\cos(\beta)+\cos(\alpha)\sin(\beta)

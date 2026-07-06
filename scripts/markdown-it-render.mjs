@@ -801,6 +801,14 @@ function renderMathlogReference(tokens, idx, options, env) {
   return `<a class="mathlog-reference" href="#${escapeAttribute(label)}">${escapeHtml(text)}</a>`;
 }
 
+function preprocessMathlogMarkdown(markdown) {
+  return markdown.replace(
+    /!\[([^\]]*)\]\((\S+)\s+=(\d+)\)/g,
+    (_match, alt, src, width) =>
+      `<img src="${escapeAttribute(src)}" alt="${escapeAttribute(alt)}" style="max-width: ${escapeAttribute(width)}px; width: 100%;">`,
+  );
+}
+
 function getVizInstance() {
   if (!vizInstancePromise) {
     vizInstancePromise = createViz();
@@ -859,6 +867,9 @@ function createMarkdownIt() {
   const defaultLinkOpen =
     md.renderer.rules.link_open ??
     ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options));
+  const defaultImage =
+    md.renderer.rules.image ??
+    ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options));
 
   md.renderer.rules.heading_open = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
@@ -882,6 +893,19 @@ function createMarkdownIt() {
       token.attrSet("rel", "noreferrer noopener");
     }
     return defaultLinkOpen(tokens, idx, options, env, self);
+  };
+
+  md.renderer.rules.image = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    const src = token.attrGet("src") || "";
+    const widthMatch = src.match(/^(.*?)\s+=(\d+)$/);
+    if (widthMatch) {
+      token.attrSet("src", widthMatch[1]);
+      token.attrSet("style", `max-width: ${widthMatch[2]}px; width: 100%;`);
+    } else if (!token.attrGet("style")) {
+      token.attrSet("style", "width: 100%;");
+    }
+    return defaultImage(tokens, idx, options, env, self);
   };
 
   md.renderer.rules.table_open = () => '<div class="table-scroll">\n<table>\n';
@@ -939,7 +963,7 @@ async function preprocessFenceTokens(tokens) {
 async function renderMarkdown(markdown) {
   const md = createMarkdownIt();
   const env = {};
-  const tokens = md.parse(markdown, env);
+  const tokens = md.parse(preprocessMathlogMarkdown(markdown), env);
   assignMathlogBoxMetadata(tokens, env);
   await preprocessFenceTokens(tokens);
   return md.renderer.render(tokens, md.options, env);
@@ -1102,6 +1126,15 @@ ${highlightCss}
 
       a {
         color: var(--link);
+      }
+
+      strong {
+        color: #d1242f;
+        font-weight: 700;
+      }
+
+      s {
+        text-decoration-thickness: 0.08em;
       }
 
       code {
