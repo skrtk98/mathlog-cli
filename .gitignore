@@ -1,0 +1,6 @@
+node_modules/
+.local-browsers/
+exports/
+*.pdf
+*.log
+.DS_Store
