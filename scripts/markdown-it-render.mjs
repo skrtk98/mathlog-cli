@@ -31,6 +31,20 @@ const MERMAID_MODULE_FILE = path.join(
 const MERMAID_DIST_DIR = path.join(DOCS_ROOT, "node_modules", "mermaid", "dist");
 const MATHJAX_DIST_DIR = path.join(DOCS_ROOT, "node_modules", "mathjax-full", "es5");
 const DOT_LANGUAGES = new Set(["dot", "graphviz", "gv"]);
+const MATHLOG_BOX_TYPES = new Map([
+  ["axm", "公理"],
+  ["def", "定義"],
+  ["thm", "定理"],
+  ["cor", "系"],
+  ["lem", "補題"],
+  ["conj", "予想"],
+  ["prop", "命題"],
+  ["fml", "公式"],
+  ["prf", "証明"],
+  ["ex", "例"],
+  ["exc", "問題"],
+  ["rem", "注意"],
+]);
 const ANSI = {
   reset: "\u001B[0m",
   bold: "\u001B[1m",
@@ -656,6 +670,137 @@ function renderMathBlock(tokens, idx) {
   return `<div class="mathlog-math mathlog-math--block mathlog-math--${escapeAttribute(align)}">\\[${escapeHtml(tokens[idx].content)}\\]</div>\n`;
 }
 
+function parseMathlogBoxInfo(info) {
+  const labelMatch = info.match(/\s+\[([^\]]+)\]\s*$/);
+  const label = labelMatch ? labelMatch[1].trim() : "";
+  const withoutLabel = labelMatch ? info.slice(0, labelMatch.index).trim() : info.trim();
+  const [maybeType = "", ...titleParts] = withoutLabel.split(/\s+/);
+  const type = MATHLOG_BOX_TYPES.has(maybeType) ? maybeType : "";
+  const title = type ? titleParts.join(" ") : withoutLabel;
+  return { type, title, label };
+}
+
+function mathlogBoxRule(state, startLine, endLine, silent) {
+  const firstLine = getLineText(state, startLine);
+  const openMatch = firstLine.trimStart().match(/^&&&(.*)$/);
+  if (!openMatch) {
+    return false;
+  }
+
+  let nextLine = startLine + 1;
+  let foundClose = false;
+  for (; nextLine < endLine; nextLine += 1) {
+    if (getLineText(state, nextLine).trim() === "&&&") {
+      foundClose = true;
+      break;
+    }
+  }
+
+  if (!foundClose) {
+    return false;
+  }
+
+  if (silent) {
+    return true;
+  }
+
+  const parsed = parseMathlogBoxInfo(openMatch[1] || "");
+  const openToken = state.push("mathlog_box_open", "section", 1);
+  openToken.block = true;
+  openToken.meta = parsed;
+  openToken.map = [startLine, nextLine + 1];
+
+  state.md.block.tokenize(state, startLine + 1, nextLine);
+
+  const closeToken = state.push("mathlog_box_close", "section", -1);
+  closeToken.block = true;
+
+  state.line = nextLine + 1;
+  return true;
+}
+
+function mathlogReferenceRule(state, silent) {
+  const start = state.pos;
+  const source = state.src;
+  if (source[start] !== "[" || source[start + 1] !== "[") {
+    return false;
+  }
+  const end = source.indexOf("]]", start + 2);
+  if (end === -1 || end === start + 2) {
+    return false;
+  }
+
+  if (!silent) {
+    const token = state.push("mathlog_reference", "a", 0);
+    token.content = source.slice(start + 2, end).trim();
+  }
+  state.pos = end + 2;
+  return true;
+}
+
+function assignMathlogBoxMetadata(tokens, env) {
+  const counters = new Map();
+  const references = {};
+  let anonymousIndex = 0;
+
+  for (const token of tokens) {
+    if (token.type === "mathlog_box_open") {
+      const meta = token.meta || {};
+      const type = meta.type || "";
+      const typeLabel = type ? MATHLOG_BOX_TYPES.get(type) : "";
+      const count = type ? (counters.get(type) || 0) + 1 : 0;
+      if (type) {
+        counters.set(type, count);
+      }
+
+      const numberLabel = typeLabel ? `${typeLabel} ${count}` : "";
+      const title = meta.title || "";
+      const referenceText = [numberLabel, title].filter(Boolean).join(" ");
+      anonymousIndex += 1;
+      token.meta = {
+        ...meta,
+        id: meta.label || `mathlog-box-${anonymousIndex}`,
+        numberLabel,
+        referenceText: referenceText || title || "囲み枠",
+      };
+
+      if (meta.label) {
+        references[meta.label] = token.meta.referenceText;
+      }
+    }
+
+    if (Array.isArray(token.children) && token.children.length > 0) {
+      assignMathlogBoxMetadata(token.children, env);
+    }
+  }
+
+  env.mathlogReferences = {
+    ...(env.mathlogReferences || {}),
+    ...references,
+  };
+}
+
+function renderMathlogBoxOpen(tokens, idx) {
+  const meta = tokens[idx].meta || {};
+  const classes = ["mathlog-box", meta.type ? `mathlog-box--${meta.type}` : "mathlog-box--plain"];
+  const heading = [meta.numberLabel, meta.title].filter(Boolean).join(" ");
+  const id = meta.id ? ` id="${escapeAttribute(meta.id)}"` : "";
+  const titleHtml = heading
+    ? `<div class="mathlog-box__title">${escapeHtml(heading)}</div>\n`
+    : "";
+  return `<section class="${classes.map(escapeAttribute).join(" ")}"${id}>\n${titleHtml}<div class="mathlog-box__body">\n`;
+}
+
+function renderMathlogBoxClose() {
+  return "</div>\n</section>\n";
+}
+
+function renderMathlogReference(tokens, idx, options, env) {
+  const label = tokens[idx].content;
+  const text = env.mathlogReferences?.[label] || label;
+  return `<a class="mathlog-reference" href="#${escapeAttribute(label)}">${escapeHtml(text)}</a>`;
+}
+
 function getVizInstance() {
   if (!vizInstancePromise) {
     vizInstancePromise = createViz();
@@ -702,6 +847,10 @@ function createMarkdownIt() {
   md.block.ruler.before("fence", "begin_environment", beginEnvironmentRule, {
     alt: ["paragraph", "reference", "blockquote", "list"],
   });
+  md.block.ruler.before("fence", "mathlog_box", mathlogBoxRule, {
+    alt: ["paragraph", "reference", "blockquote", "list"],
+  });
+  md.inline.ruler.before("link", "mathlog_reference", mathlogReferenceRule);
 
   const seenIds = new Map();
   const diagramFence = md.renderer.rules.fence
@@ -739,6 +888,9 @@ function createMarkdownIt() {
   md.renderer.rules.table_close = () => "</table>\n</div>\n";
   md.renderer.rules.math_inline = renderMathInline;
   md.renderer.rules.math_block = renderMathBlock;
+  md.renderer.rules.mathlog_box_open = renderMathlogBoxOpen;
+  md.renderer.rules.mathlog_box_close = renderMathlogBoxClose;
+  md.renderer.rules.mathlog_reference = renderMathlogReference;
 
   md.renderer.rules.fence = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
@@ -788,6 +940,7 @@ async function renderMarkdown(markdown) {
   const md = createMarkdownIt();
   const env = {};
   const tokens = md.parse(markdown, env);
+  assignMathlogBoxMetadata(tokens, env);
   await preprocessFenceTokens(tokens);
   return md.renderer.render(tokens, md.options, env);
 }
@@ -1039,6 +1192,49 @@ ${highlightCss}
         color: var(--muted);
         background: var(--quote-bg);
         border-left: 4px solid var(--border);
+      }
+
+      .mathlog-box {
+        margin: 1.2rem 0;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #fff;
+        overflow: hidden;
+      }
+
+      .mathlog-box__title {
+        padding: 0.55rem 0.85rem;
+        border-bottom: 1px solid var(--border);
+        background: #f6f8fa;
+        font-weight: 700;
+      }
+
+      .mathlog-box__body {
+        padding: 0.85rem;
+      }
+
+      .mathlog-box__body > :last-child {
+        margin-bottom: 0;
+      }
+
+      .mathlog-box--def,
+      .mathlog-box--thm,
+      .mathlog-box--lem,
+      .mathlog-box--prop,
+      .mathlog-box--cor,
+      .mathlog-box--fml,
+      .mathlog-box--axm {
+        border-color: #8c959f;
+      }
+
+      .mathlog-box--prf {
+        border-color: #6e7781;
+        background: #fbfbfc;
+      }
+
+      .mathlog-reference {
+        font-weight: 700;
+        text-decoration-thickness: 0.08em;
       }
 
       .table-scroll {
