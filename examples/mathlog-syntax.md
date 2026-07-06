@@ -6,6 +6,21 @@
 
 ![dummy image](https://example.com/image.png =500)
 
+(1) 丸括弧の番号あり
+(2) 2つ目
+
+[1] 角括弧の番号あり
+[2] 2つ目
+
+R1. ローマン数字の番号あり
+R2. 2つ目
+
+(R1) 丸括弧のローマン数字
+(R2) 2つ目
+
+[R1] 角括弧のローマン数字
+[R2] 2つ目
+
 $$
 \TextCenter
 \sin(\alpha+\beta) = \sin(\alpha)\cos(\beta)+\cos(\alpha)\sin(\beta)

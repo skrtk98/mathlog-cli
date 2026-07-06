@@ -801,6 +801,94 @@ function renderMathlogReference(tokens, idx, options, env) {
   return `<a class="mathlog-reference" href="#${escapeAttribute(label)}">${escapeHtml(text)}</a>`;
 }
 
+function parseMathlogListMarker(line) {
+  const markerPatterns = [
+    { type: "paren-roman", pattern: /^\s*\(R(\d+)\)\s+(.+)$/ },
+    { type: "bracket-roman", pattern: /^\s*\[R(\d+)\]\s+(.+)$/ },
+    { type: "roman", pattern: /^\s*R(\d+)\.\s+(.+)$/ },
+    { type: "paren-decimal", pattern: /^\s*\((\d+)\)\s+(.+)$/ },
+    { type: "bracket-decimal", pattern: /^\s*\[(\d+)\]\s+(.+)$/ },
+  ];
+
+  for (const { type, pattern } of markerPatterns) {
+    const match = line.match(pattern);
+    if (match) {
+      const markerByType = {
+        "paren-roman": `(R${match[1]})`,
+        "bracket-roman": `[R${match[1]}]`,
+        roman: `R${match[1]}.`,
+        "paren-decimal": `(${match[1]})`,
+        "bracket-decimal": `[${match[1]}]`,
+      };
+      return {
+        type,
+        ordinal: match[1],
+        marker: markerByType[type],
+        content: match[2],
+      };
+    }
+  }
+
+  return null;
+}
+
+function mathlogListRule(state, startLine, endLine, silent) {
+  const firstLine = getLineText(state, startLine);
+  const firstMarker = parseMathlogListMarker(firstLine);
+  if (!firstMarker) {
+    return false;
+  }
+
+  if (silent) {
+    return true;
+  }
+
+  const openToken = state.push("mathlog_list_open", "ol", 1);
+  openToken.block = true;
+  openToken.meta = { type: firstMarker.type };
+  openToken.map = [startLine, startLine + 1];
+
+  let nextLine = startLine;
+  for (; nextLine < endLine; nextLine += 1) {
+    const line = getLineText(state, nextLine);
+    const marker = parseMathlogListMarker(line);
+    if (!marker || marker.type !== firstMarker.type) {
+      break;
+    }
+
+    const itemOpen = state.push("mathlog_list_item_open", "li", 1);
+    itemOpen.block = true;
+    itemOpen.meta = { marker: marker.marker };
+
+    const inlineToken = state.push("inline", "", 0);
+    inlineToken.content = marker.content;
+    inlineToken.children = [];
+
+    const itemClose = state.push("mathlog_list_item_close", "li", -1);
+    itemClose.block = true;
+  }
+
+  const closeToken = state.push("mathlog_list_close", "ol", -1);
+  closeToken.block = true;
+  openToken.map = [startLine, nextLine];
+  state.line = nextLine;
+  return true;
+}
+
+function renderMathlogListOpen(tokens, idx) {
+  const type = tokens[idx].meta?.type || "custom";
+  return `<ol class="mathlog-list mathlog-list--${escapeAttribute(type)}">\n`;
+}
+
+function renderMathlogListItemOpen(tokens, idx) {
+  const marker = tokens[idx].meta?.marker || "";
+  return `<li><span class="mathlog-list__marker">${escapeHtml(marker)}</span><span class="mathlog-list__content">`;
+}
+
+function renderMathlogListItemClose() {
+  return "</span></li>\n";
+}
+
 function preprocessMathlogMarkdown(markdown) {
   return markdown.replace(
     /!\[([^\]]*)\]\((\S+)\s+=(\d+)\)/g,
@@ -857,6 +945,9 @@ function createMarkdownIt() {
   });
   md.block.ruler.before("fence", "mathlog_box", mathlogBoxRule, {
     alt: ["paragraph", "reference", "blockquote", "list"],
+  });
+  md.block.ruler.before("list", "mathlog_list", mathlogListRule, {
+    alt: ["paragraph", "reference", "blockquote"],
   });
   md.inline.ruler.before("link", "mathlog_reference", mathlogReferenceRule);
 
@@ -915,6 +1006,10 @@ function createMarkdownIt() {
   md.renderer.rules.mathlog_box_open = renderMathlogBoxOpen;
   md.renderer.rules.mathlog_box_close = renderMathlogBoxClose;
   md.renderer.rules.mathlog_reference = renderMathlogReference;
+  md.renderer.rules.mathlog_list_open = renderMathlogListOpen;
+  md.renderer.rules.mathlog_list_close = () => "</ol>\n";
+  md.renderer.rules.mathlog_list_item_open = renderMathlogListItemOpen;
+  md.renderer.rules.mathlog_list_item_close = renderMathlogListItemClose;
 
   md.renderer.rules.fence = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
@@ -1268,6 +1363,23 @@ ${highlightCss}
       .mathlog-reference {
         font-weight: 700;
         text-decoration-thickness: 0.08em;
+      }
+
+      .mathlog-list {
+        list-style: none;
+        padding-left: 0;
+      }
+
+      .mathlog-list li {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap: 0.55rem;
+        margin: 0.25rem 0;
+      }
+
+      .mathlog-list__marker {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
       }
 
       .table-scroll {
