@@ -34,10 +34,10 @@ npm run init
 npm run preview
 ```
 
-起動すると URL が標準出力に表示されます。既定では `http://localhost:8888/` です。
+起動すると URL が標準出力に表示されます。既定では `http://localhost:3141/` です。
 
 ```text
-Mathlog preview: http://localhost:8888/
+Mathlog preview: http://localhost:3141/
 Content directory: /path/to/mathlog-cli/public
 Shortcuts: r restart, o open, e edit, q quit
 ```
@@ -51,7 +51,7 @@ npm run new -- my-article
 別のディレクトリを記事置き場にする場合は、ディレクトリを指定します。
 
 ```bash
-npm run preview -- path/to/articles --port 8888
+npm run preview -- path/to/articles --port 3141
 npm run new -- my-article path/to/articles
 ```
 
@@ -61,7 +61,7 @@ npm run new -- my-article path/to/articles
 {
   "contentDir": "public",
   "host": "localhost",
-  "port": 8888
+  "port": 3141
 }
 ```
 

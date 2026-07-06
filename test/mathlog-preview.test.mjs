@@ -118,7 +118,7 @@ async function createRepresentativeContentDir(prefix = "mathlog-representative-"
   return contentDir;
 }
 
-async function startPreviewServer(contentDir) {
+async function startPreviewServer(contentDir, options = {}) {
   const args = [SCRIPT_FILE, "serve"];
   if (contentDir) {
     args.push(contentDir);
@@ -129,7 +129,8 @@ async function startPreviewServer(contentDir) {
     args,
     {
       cwd: process.cwd(),
-      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, ...(options.env || {}) },
+      stdio: [options.stdin || "ignore", "pipe", "pipe"],
     },
   );
 
@@ -153,6 +154,9 @@ async function startPreviewServer(contentDir) {
         url: match[0],
         getStdout() {
           return stdout;
+        },
+        writeInput(input) {
+          child.stdin?.write(input);
         },
         async stop() {
           if (child.exitCode !== null) {
@@ -198,6 +202,7 @@ test("renders representative Mathlog syntax", async () => {
     assert.match(html, /<a href="https:\/\/opthub.notion.site\/1ca318bcf9ac8195ad0af2a1ae8319e0"[^>]*>公式リファレンス<\/a>/);
     assert.match(html, /class="article-nav__link article-nav__link--active" href="\/\?file=mathlog-syntax.md"/);
     assert.match(html, /<span>Mathlog syntax preview<\/span><small>mathlog-syntax.md<\/small>/);
+    assert.match(html, /<header class="preview-article-header">\s*<h1>Mathlog syntax preview<\/h1>/);
     assert.match(html, /<div class="preview-meta">mathlog-syntax.md <span class="preview-meta__badge">syntax<\/span><\/div>/);
     assert.doesNotMatch(html, /title: Mathlog syntax preview/);
     assert.match(html, /<h2 id="mathlog-syntax-preview">Mathlog syntax preview<\/h2>/);
@@ -279,7 +284,7 @@ test("initializes a content directory", async () => {
   assert.equal(code, 0);
   const markdown = await fsp.readFile(path.join(contentDir, "welcome.md"), "utf8");
   const config = JSON.parse(await fsp.readFile(path.join(root, "mathlog.config.json"), "utf8"));
-  assert.deepEqual(config, { contentDir: "public", host: "localhost", port: 8888 });
+  assert.deepEqual(config, { contentDir: "public", host: "localhost", port: 3141 });
   assert.match(markdown, /^title: welcome/m);
   assert.match(markdown, /^# welcome/m);
 });
@@ -302,6 +307,7 @@ test("creates an article from the preview API", async () => {
     assert.equal(payload.relativePath, "second.md");
 
     const html = await fetch(new URL("/?file=second.md", server.url)).then((res) => res.text());
+    assert.match(html, /<header class="preview-article-header">\s*<h1>second<\/h1>/);
     assert.match(html, /<div class="preview-meta">second.md<\/div>/);
     assert.match(html, /<h2 id="second">second<\/h2>/);
   } finally {
@@ -331,11 +337,34 @@ test("parses CRLF front matter with inline tags", async () => {
   try {
     const html = await fetch(server.url).then((res) => res.text());
     assert.match(html, /<span>CRLF meta<span class="article-nav__badge">private<\/span><\/span><small>meta.md<\/small>/);
+    assert.match(html, /<header class="preview-article-header">\s*<h1>CRLF meta<\/h1>/);
     assert.match(html, /<div class="preview-meta">meta.md <span class="preview-meta__badge">private<\/span> <span class="preview-meta__badge">math<\/span> <span class="preview-meta__badge">topology<\/span><\/div>/);
     assert.doesNotMatch(html, /title: &quot;CRLF meta&quot;/);
   } finally {
     await server.stop();
   }
+});
+
+test("serves terminal shortcut input", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-shortcuts-"));
+  const contentDir = path.join(root, "public");
+  await fsp.mkdir(contentDir, { recursive: true });
+  await fsp.writeFile(path.join(contentDir, "shortcut.md"), "# shortcut\n", "utf8");
+
+  const server = await startPreviewServer(contentDir, {
+    stdin: "pipe",
+    env: { MATHLOG_PREVIEW_FORCE_SHORTCUTS: "1" },
+  });
+  server.writeInput("r");
+  const deadline = Date.now() + 1000;
+  while (!/Restarted preview renderer\./.test(server.getStdout()) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.match(server.getStdout(), /Restarted preview renderer\./);
+  server.writeInput("q");
+  const [code] = await once(server.child, "exit");
+  assert.equal(code, 0);
+  assert.match(server.getStdout(), /Shortcuts: r restart, o open, e edit, q quit/);
 });
 
 test("renders an empty project without a hard-coded public directory message", async () => {

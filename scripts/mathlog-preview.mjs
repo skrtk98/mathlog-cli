@@ -4,7 +4,6 @@ import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import process from "node:process";
-import readline from "node:readline";
 import { exec, spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -23,7 +22,7 @@ const HIGHLIGHT_THEME_FILE = require.resolve("highlight.js/styles/github.css");
 const MATHJAX_DIST_DIR = path.join(DOCS_ROOT, "node_modules", "mathjax-full", "es5");
 const DEFAULT_CONTENT_DIR = "public";
 const DEFAULT_HOST = "localhost";
-const DEFAULT_PORT = 8888;
+const DEFAULT_PORT = 3141;
 const CONFIG_FILE_NAME = "mathlog.config.json";
 const OFFICIAL_LINKS = [
   ["Mathlog", "https://mathlog.info/"],
@@ -50,7 +49,7 @@ function usage() {
   return [
     "Usage:",
     "  mathlog init [content-dir]",
-    "  mathlog preview [content-dir] [--host localhost] [--port 8888]",
+    "  mathlog preview [content-dir] [--host localhost] [--port 3141]",
     "  mathlog new <basename> [content-dir]",
     "  mathlog version",
   ].join("\n");
@@ -399,16 +398,17 @@ async function openEditor(inputFile) {
 }
 
 function bindServeShortcuts({ contentRoot, url, onQuit }) {
-  if (!process.stdin.isTTY) {
+  const forceShortcuts = process.env.MATHLOG_PREVIEW_FORCE_SHORTCUTS === "1";
+  if (!process.stdin.isTTY && !forceShortcuts) {
     return {
       interactive: false,
       dispose() {},
     };
   }
 
+  const previousRawMode = Boolean(process.stdin.isRaw);
   process.stdin.resume();
   process.stdin.setEncoding("utf8");
-  readline.emitKeypressEvents(process.stdin);
   process.stdin.setRawMode?.(true);
 
   let disposed = false;
@@ -423,11 +423,11 @@ function bindServeShortcuts({ contentRoot, url, onQuit }) {
       });
   };
 
-  const onKeyPress = (str, key) => {
+  const handleShortcut = (str) => {
     if (disposed) {
       return;
     }
-    if (key?.ctrl && key.name === "c") {
+    if (str === "\u0003") {
       runShortcut(onQuit);
       return;
     }
@@ -436,6 +436,7 @@ function bindServeShortcuts({ contentRoot, url, onQuit }) {
       case "r":
         runShortcut(async () => {
           resetRenderState();
+          console.log("Restarted preview renderer.");
           printServeSummary({ contentRoot, url, interactive: true });
         });
         break;
@@ -457,7 +458,13 @@ function bindServeShortcuts({ contentRoot, url, onQuit }) {
     }
   };
 
-  process.stdin.on("keypress", onKeyPress);
+  const onData = (chunk) => {
+    for (const char of String(chunk)) {
+      handleShortcut(char);
+    }
+  };
+
+  process.stdin.on("data", onData);
 
   return {
     interactive: true,
@@ -466,8 +473,8 @@ function bindServeShortcuts({ contentRoot, url, onQuit }) {
         return;
       }
       disposed = true;
-      process.stdin.off("keypress", onKeyPress);
-      process.stdin.setRawMode?.(false);
+      process.stdin.off("data", onData);
+      process.stdin.setRawMode?.(previousRawMode);
       process.stdin.pause();
     },
   };
@@ -1479,6 +1486,16 @@ function renderArticleMeta(selectedPath, meta) {
   return `${escapeHtml(selectedPath)}${badges.length > 0 ? ` ${badges.join(" ")}` : ""}`;
 }
 
+function renderPreviewHeader(selectedArticle) {
+  if (!selectedArticle) {
+    return "";
+  }
+  return `<header class="preview-article-header">
+          <h1>${escapeHtml(selectedArticle.title)}</h1>
+          <div class="preview-meta">${renderArticleMeta(selectedArticle.relativePath, selectedArticle.meta || {})}</div>
+        </header>`;
+}
+
 async function loadHighlightCss() {
   if (!highlightCssPromise) {
     highlightCssPromise = fsp.readFile(HIGHLIGHT_THEME_FILE, "utf8");
@@ -1669,9 +1686,20 @@ ${highlightCss}
         padding: 32px 24px 80px;
       }
 
-      .preview-meta {
+      .preview-article-header {
         max-width: 980px;
         margin: 0 auto 16px;
+      }
+
+      .preview-article-header h1 {
+        margin: 0 0 0.45rem;
+        border-bottom: 0;
+        padding-bottom: 0;
+        font-size: 2rem;
+      }
+
+      .preview-meta {
+        margin: 0;
         color: var(--muted);
         font-size: 0.9rem;
         overflow-wrap: anywhere;
@@ -2025,8 +2053,12 @@ ${highlightCss}
           border-bottom: 1px solid var(--border);
         }
 
-        .preview-pane {
+      .preview-pane {
           padding: 20px 12px 56px;
+        }
+
+        .preview-article-header h1 {
+          font-size: 1.55rem;
         }
 
         main.markdown-body {
@@ -2212,7 +2244,7 @@ ${highlightCss}
         ${renderArticleNav(articles, selectedPath)}
       </aside>
       <div class="preview-pane">
-        <div class="preview-meta">${renderArticleMeta(selectedPath, articles.find((article) => article.relativePath === selectedPath)?.meta || {})}</div>
+        ${renderPreviewHeader(articles.find((article) => article.relativePath === selectedPath) || null)}
         <main class="markdown-body">
 ${body}
         </main>
