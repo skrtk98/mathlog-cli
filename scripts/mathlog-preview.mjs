@@ -64,7 +64,6 @@ function usage() {
   return [
     "Usage:",
     "  node scripts/mathlog-preview.mjs serve <input.md> [--port 3030]",
-    "  node scripts/mathlog-preview.mjs build <input.md> [output.pdf] [--timeout-ms 30000]",
   ].join("\n");
 }
 
@@ -171,13 +170,6 @@ function printServeSummary({ inputFile, url, interactive }) {
   console.log("");
 }
 
-function printBuildSummary({ inputFile, outputFile }) {
-  printBanner();
-  console.log(formatLabelValue("entry", formatPathValue(inputFile)));
-  console.log(formatLabelValue("output", formatPathValue(outputFile)));
-  console.log("");
-}
-
 function resolveInputFile(inputArg) {
   if (!inputArg) {
     throw new Error(usage());
@@ -204,14 +196,6 @@ async function ensureInputFile(inputFile) {
   }
 }
 
-function resolvePdfOutputFile(inputFile, outputArg) {
-  if (outputArg) {
-    return path.resolve(process.cwd(), outputArg);
-  }
-  const parsed = path.parse(inputFile);
-  return path.join(parsed.dir, `${parsed.name}.pdf`);
-}
-
 function parsePort(args) {
   const flagIndex = args.findIndex((arg) => arg === "--port");
   if (flagIndex === -1) {
@@ -222,29 +206,6 @@ function parsePort(args) {
     throw new Error(`Invalid --port value: ${args[flagIndex + 1] || ""}`);
   }
   return value;
-}
-
-function parseTimeoutMs(args) {
-  const flagIndex = args.findIndex((arg) => arg === "--timeout-ms");
-  if (flagIndex === -1) {
-    return 0;
-  }
-  const value = Number.parseInt(args[flagIndex + 1] || "", 10);
-  if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`Invalid --timeout-ms value: ${args[flagIndex + 1] || ""}`);
-  }
-  return value;
-}
-
-function stripFlag(args, flagName) {
-  const flagIndex = args.findIndex((arg) => arg === flagName);
-  if (flagIndex === -1) {
-    return [...args];
-  }
-
-  const nextArgs = [...args];
-  nextArgs.splice(flagIndex, 2);
-  return nextArgs;
 }
 
 function resetRenderState() {
@@ -1891,81 +1852,6 @@ async function createServer({ inputFile, embedFonts = false, port = 3030 }) {
   };
 }
 
-function detectChromePath() {
-  return process.env.MATHLOG_PREVIEW_CHROME_PATH || "";
-}
-
-async function exportPdf(inputFile, outputFile, timeoutMs) {
-  const chromePath = detectChromePath();
-  if (!chromePath) {
-    throw new Error(
-      [
-        "MATHLOG_PREVIEW_CHROME_PATH is required for PDF export.",
-        "Point it to a Chrome/Chromium executable.",
-      ].join(" "),
-    );
-  }
-
-  const { server, url } = await createServer({
-    inputFile,
-    embedFonts: true,
-    port: 0,
-  });
-
-  try {
-    const puppeteer = require("puppeteer-core");
-    const browser = await puppeteer.launch({
-      executablePath: chromePath,
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-
-    try {
-      const page = await browser.newPage();
-      let pageRuntimeError;
-      page.on("pageerror", (error) => {
-        pageRuntimeError = error;
-      });
-      await page.goto(url, { waitUntil: "networkidle0" });
-      await page.waitForFunction(
-        () => window.__markdownItRenderReady__ === true || window.__markdownItRenderReady__ === "error",
-        {
-        timeout: timeoutMs,
-        },
-      );
-      if (pageRuntimeError) {
-        throw pageRuntimeError;
-      }
-      const renderError = await page.evaluate(() => window.__markdownItRenderError__ || null);
-      if (renderError) {
-        const previewError = new Error(renderError.message || "Preview render failed.");
-        previewError.stack = renderError.stack || previewError.stack;
-        throw previewError;
-      }
-      await page.emulateMediaType("print");
-
-      await fsp.mkdir(path.dirname(outputFile), { recursive: true });
-      await page.pdf({
-        path: outputFile,
-        format: "A3",
-        outline: true,
-        printBackground: true,
-        preferCSSPageSize: true,
-        margin: {
-          top: "10mm",
-          bottom: "10mm",
-          left: "10mm",
-          right: "10mm",
-        },
-      });
-    } finally {
-      await browser.close();
-    }
-  } finally {
-    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-  }
-}
-
 async function runServe(args) {
   if (args.length < 1 || args.length > 3) {
     throw new Error(usage());
@@ -2021,29 +1907,12 @@ async function runServe(args) {
   }
 }
 
-async function runBuild(args) {
-  const timeoutMs = parseTimeoutMs(args);
-  const positionalArgs = stripFlag(args, "--timeout-ms");
-
-  if (positionalArgs.length < 1 || positionalArgs.length > 2) {
-    throw new Error(usage());
-  }
-  const inputFile = resolveInputFile(positionalArgs[0]);
-  const outputFile = resolvePdfOutputFile(inputFile, positionalArgs[1]);
-  await ensureInputFile(inputFile);
-  await exportPdf(inputFile, outputFile, timeoutMs);
-  printBuildSummary({ inputFile, outputFile });
-}
-
 async function main() {
   const [command, ...args] = process.argv.slice(2);
 
   switch (command) {
     case "serve":
       await runServe(args);
-      return;
-    case "build":
-      await runBuild(args);
       return;
     default:
       throw new Error(usage());

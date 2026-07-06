@@ -1,17 +1,11 @@
 # mathlog-cli
 
-Mathlog の記事 Markdown をローカルでプレビューし、必要に応じて PDF 出力するための CLI です。
+Mathlog の記事 Markdown をローカルでプレビューするための CLI です。
 
 ## セットアップ
 
 ```bash
 npm install
-```
-
-PDF 出力を使う場合は Chrome/Chromium を用意し、`MATHLOG_PREVIEW_CHROME_PATH` に実行ファイルを指定してください。`scripts/build.sh` は `.local-browsers` 配下の `chrome-headless-shell` を自動検出します。
-
-```bash
-npx @puppeteer/browsers install chrome-headless-shell@stable --path ./.local-browsers
 ```
 
 ## 使い方
@@ -20,18 +14,6 @@ npx @puppeteer/browsers install chrome-headless-shell@stable --path ./.local-bro
 
 ```bash
 npm run preview -- examples/mathlog-syntax.md --port 3030
-```
-
-単一 PDF 出力:
-
-```bash
-npm run build -- examples/mathlog-syntax.md
-```
-
-複数 Markdown の PDF 出力:
-
-```bash
-bash scripts/build.sh "examples/*.md" "exports"
 ```
 
 ## 対応済みの Mathlog 構文
