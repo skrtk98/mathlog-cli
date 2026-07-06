@@ -29,6 +29,7 @@ const MERMAID_MODULE_FILE = path.join(
   "mermaid.esm.min.mjs",
 );
 const MERMAID_DIST_DIR = path.join(DOCS_ROOT, "node_modules", "mermaid", "dist");
+const MATHJAX_DIST_DIR = path.join(DOCS_ROOT, "node_modules", "mathjax-full", "es5");
 const DOT_LANGUAGES = new Set(["dot", "graphviz", "gv"]);
 const ANSI = {
   reset: "\u001B[0m",
@@ -508,6 +509,153 @@ function renderDiagramShell(innerHtml, kind) {
 </div>`;
 }
 
+function isEscapedDelimiter(source, index) {
+  let slashCount = 0;
+  for (let pos = index - 1; pos >= 0 && source[pos] === "\\"; pos -= 1) {
+    slashCount += 1;
+  }
+  return slashCount % 2 === 1;
+}
+
+function findClosingDollar(source, start, max) {
+  for (let pos = start; pos < max; pos += 1) {
+    if (source[pos] === "$" && !isEscapedDelimiter(source, pos)) {
+      return pos;
+    }
+  }
+  return -1;
+}
+
+function mathInlineRule(state, silent) {
+  const start = state.pos;
+  const source = state.src;
+
+  if (source[start] !== "$" || source[start + 1] === "$" || isEscapedDelimiter(source, start)) {
+    return false;
+  }
+
+  const end = findClosingDollar(source, start + 1, state.posMax);
+  if (end === -1 || end === start + 1) {
+    return false;
+  }
+
+  if (!silent) {
+    const token = state.push("math_inline", "span", 0);
+    token.content = source.slice(start + 1, end);
+  }
+  state.pos = end + 1;
+  return true;
+}
+
+function getLineText(state, line) {
+  return state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]);
+}
+
+function parseMathAlignment(content) {
+  const match = content.match(/^\s*\\Text(Center|Right|Left)\b\s*/);
+  if (!match) {
+    return { align: "left", content };
+  }
+  return {
+    align: match[1].toLowerCase(),
+    content: content.slice(match[0].length),
+  };
+}
+
+function mathBlockRule(state, startLine, endLine, silent) {
+  const firstLine = getLineText(state, startLine);
+  if (!firstLine.trimStart().startsWith("$$")) {
+    return false;
+  }
+
+  const openerIndex = firstLine.indexOf("$$");
+  const afterOpener = firstLine.slice(openerIndex + 2);
+  const collected = [];
+  let nextLine = startLine + 1;
+  let foundClose = false;
+
+  if (afterOpener.trimEnd().endsWith("$$") && afterOpener.trim().length > 2) {
+    collected.push(afterOpener.replace(/\$\$\s*$/, ""));
+    foundClose = true;
+  } else {
+    if (afterOpener.trim().length > 0) {
+      collected.push(afterOpener);
+    }
+    for (; nextLine < endLine; nextLine += 1) {
+      const line = getLineText(state, nextLine);
+      if (line.trim() === "$$") {
+        foundClose = true;
+        nextLine += 1;
+        break;
+      }
+      collected.push(line);
+    }
+  }
+
+  if (!foundClose) {
+    return false;
+  }
+
+  if (!silent) {
+    const token = state.push("math_block", "div", 0);
+    const parsed = parseMathAlignment(collected.join("\n").trim());
+    token.content = parsed.content;
+    token.meta = { align: parsed.align };
+    token.map = [startLine, nextLine];
+  }
+
+  state.line = nextLine;
+  return true;
+}
+
+function beginEnvironmentRule(state, startLine, endLine, silent) {
+  const firstLine = getLineText(state, startLine);
+  const beginMatch = firstLine.trimStart().match(/^\\begin\{([^}]+)\}/);
+  if (!beginMatch) {
+    return false;
+  }
+
+  const environmentName = beginMatch[1];
+  const endPattern = new RegExp(`\\\\end\\{${environmentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\}`);
+  const collected = [firstLine.trimStart()];
+  let nextLine = startLine + 1;
+  let foundClose = endPattern.test(firstLine);
+
+  for (; !foundClose && nextLine < endLine; nextLine += 1) {
+    const line = getLineText(state, nextLine);
+    collected.push(line);
+    if (endPattern.test(line)) {
+      foundClose = true;
+      nextLine += 1;
+      break;
+    }
+  }
+
+  if (!foundClose) {
+    return false;
+  }
+
+  if (!silent) {
+    const token = state.push("math_block", "div", 0);
+    const parsed = parseMathAlignment(collected.join("\n").trim());
+    token.content = parsed.content;
+    token.meta = { align: parsed.align };
+    token.map = [startLine, nextLine];
+  }
+
+  state.line = nextLine;
+  return true;
+}
+
+function renderMathInline(tokens, idx) {
+  return `<span class="mathlog-math mathlog-math--inline">\\(${escapeHtml(tokens[idx].content)}\\)</span>`;
+}
+
+function renderMathBlock(tokens, idx) {
+  const align = tokens[idx].meta?.align || "left";
+  return `<div class="mathlog-math mathlog-math--block mathlog-math--${escapeAttribute(align)}">\\[${escapeHtml(tokens[idx].content)}\\]</div>\n`;
+}
+
 function getVizInstance() {
   if (!vizInstancePromise) {
     vizInstancePromise = createViz();
@@ -547,6 +695,14 @@ function createMarkdownIt() {
     imageFormat: "svg",
   });
 
+  md.inline.ruler.before("escape", "math_inline", mathInlineRule);
+  md.block.ruler.before("fence", "math_block", mathBlockRule, {
+    alt: ["paragraph", "reference", "blockquote", "list"],
+  });
+  md.block.ruler.before("fence", "begin_environment", beginEnvironmentRule, {
+    alt: ["paragraph", "reference", "blockquote", "list"],
+  });
+
   const seenIds = new Map();
   const diagramFence = md.renderer.rules.fence
     ? md.renderer.rules.fence.bind(md.renderer.rules)
@@ -581,6 +737,8 @@ function createMarkdownIt() {
 
   md.renderer.rules.table_open = () => '<div class="table-scroll">\n<table>\n';
   md.renderer.rules.table_close = () => "</table>\n</div>\n";
+  md.renderer.rules.math_inline = renderMathInline;
+  md.renderer.rules.math_block = renderMathBlock;
 
   md.renderer.rules.fence = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
@@ -907,6 +1065,19 @@ ${highlightCss}
         max-width: 100%;
       }
 
+      .mathlog-math--block {
+        overflow-x: auto;
+        margin: 1rem 0;
+      }
+
+      .mathlog-math--center {
+        text-align: center;
+      }
+
+      .mathlog-math--right {
+        text-align: right;
+      }
+
       svg text,
       svg foreignObject,
       svg foreignObject div {
@@ -968,6 +1139,23 @@ ${highlightCss}
         }
       }
     </style>
+    <script>
+      window.MathJax = {
+        tex: {
+          inlineMath: [["\\\\(", "\\\\)"]],
+          displayMath: [["\\\\[", "\\\\]"]],
+          processEscapes: true,
+          tags: "ams"
+        },
+        svg: {
+          fontCache: "global"
+        },
+        startup: {
+          typeset: false
+        }
+      };
+    </script>
+    <script src="/vendor/mathjax/tex-svg-full.js"></script>
     <script type="module">
       import mermaid from "/vendor/mermaid.esm.min.mjs";
 
@@ -1087,6 +1275,10 @@ ${highlightCss}
           await mermaid.run({ nodes });
         }
 
+        if (window.MathJax?.typesetPromise) {
+          await window.MathJax.typesetPromise([document.querySelector(".markdown-body")]);
+        }
+
         attachCodeActions();
         attachDiagramActions();
 
@@ -1129,6 +1321,9 @@ async function renderHtml(inputFile, { embedFonts = false } = {}) {
 }
 
 function getContentType(filePath) {
+  if (filePath.endsWith(".js")) {
+    return "text/javascript; charset=utf-8";
+  }
   if (filePath.endsWith(".mjs")) {
     return "text/javascript; charset=utf-8";
   }
@@ -1159,6 +1354,20 @@ async function createServer({ inputFile, embedFonts = false, port = 3030 }) {
       }
 
       if (pathname.startsWith("/vendor/")) {
+        if (pathname.startsWith("/vendor/mathjax/")) {
+          const mathJaxFile = path.join(MATHJAX_DIST_DIR, pathname.replace(/^\/vendor\/mathjax\//, ""));
+          const normalized = path.normalize(mathJaxFile);
+          if (!normalized.startsWith(MATHJAX_DIST_DIR)) {
+            res.writeHead(403);
+            res.end("Forbidden");
+            return;
+          }
+          const body = await fsp.readFile(normalized);
+          res.writeHead(200, { "content-type": getContentType(normalized) });
+          res.end(body);
+          return;
+        }
+
         const vendorFile = path.join(MERMAID_DIST_DIR, pathname.replace(/^\/vendor\//, ""));
         const normalized = path.normalize(vendorFile);
         if (!normalized.startsWith(MERMAID_DIST_DIR)) {

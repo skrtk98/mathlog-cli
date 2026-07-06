@@ -15,6 +15,7 @@
     "markdown-it-deflist": "^3.0.0",
     "markdown-it-diagram": "^1.1.4",
     "markdown-it-multimd-table": "^4.2.3",
+    "mathjax-full": "^3.2.2",
     "mermaid": "^11.14.0",
     "puppeteer-core": "^24.40.0"
   }
