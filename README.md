@@ -82,6 +82,52 @@ npx github:skrtk98/mathlog-cli preview
 npx github:skrtk98/mathlog-cli new my-article
 ```
 
+## 記事ファイルと front matter
+
+1 つの記事は、記事置き場にある 1 つの Markdown ファイルで管理します。既定の記事置き場は `public/` です。
+
+```text
+.
+└── public/
+    ├── my-article.md
+    └── mathlog.macros.json
+```
+
+記事ファイルの先頭には、`---` で囲んだ front matter を書けます。これは Mathlog 本体の記法ではなく、`mathlog-cli` がローカルプレビューの表示を整えるために読む独自仕様です。Mathlog に投稿する本文として扱う部分は、front matter の後ろに書きます。
+
+```markdown
+---
+title: "記事タイトル"
+tags:
+  - "Mathlog"
+  - "Markdown"
+private: false
+---
+
+ここから本文を書きます。
+```
+
+`mathlog-cli` が読む項目は次の通りです。
+
+- `title`: 記事一覧、プレビュー上部、ブラウザタイトルに使う記事タイトルです。省略した場合はファイル名を使います。
+- `tags`: 記事一覧やプレビュー上部に表示するタグです。ブロックスタイルとインライン配列の両方を書けます。
+- `private`: `true` の場合、プレビュー上で private バッジを表示します。Mathlog への公開状態を変更するものではありません。
+
+`tags` は次のようなインライン配列でも書けます。
+
+```markdown
+---
+title: "記事タイトル"
+tags: ["Mathlog", "Markdown"]
+private: false
+---
+```
+
+front matter はローカルプレビュー用のメタ情報です。Mathlog の本文へ貼り付けるときは、必要に応じて本文部分だけを使ってください。
+
+> [!WARNING]
+> `mathlog-cli` はローカルプレビュー用のツールです。Mathlog への実際の記事投稿や既存記事の更新は行いません。投稿・更新は Mathlog の Web 画面で行ってください。
+
 ## プレビュー画面
 
 - `public/` 配下の `.md` を一覧表示します。
@@ -129,7 +175,6 @@ npx github:skrtk98/mathlog-cli new my-article
 - 相対 `.md` 記事リンク
 - 太字、斜体、取り消し線、表、引用、コード、HTML
 - 公式リファレンスの HTML 例で使われる `fw-bold`、`border`、`box`、`p-4` の簡易 CSS
-- `title`、`tags`、`private` の front matter 表示
 
 公式リファレンス: https://opthub.notion.site/1ca318bcf9ac8195ad0af2a1ae8319e0
 
