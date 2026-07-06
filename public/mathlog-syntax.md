@@ -25,6 +25,8 @@ private: false
 
 [関連ページ](related.md)
 
+https://mathlog.info/
+
 (1) 丸括弧の番号あり
 	- 下位項目1
 	- 下位項目2
