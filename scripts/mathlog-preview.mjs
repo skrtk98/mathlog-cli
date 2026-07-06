@@ -949,6 +949,16 @@ function renderMathlogBoxClose() {
   return "</div>\n</section>\n";
 }
 
+function normalizeArticleRelativePath(currentDir, target) {
+  return path.posix
+    .normalize(path.posix.join(currentDir || "", target))
+    .replace(/^\/+/, "");
+}
+
+function isExternalResource(value) {
+  return /^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(value);
+}
+
 function renderMathlogReference(tokens, idx, options, env) {
   const label = tokens[idx].content;
   const text = env.mathlogReferences?.[label] || label;
@@ -1121,11 +1131,19 @@ function renderMathlogListItemClose() {
   return "</div></li>\n";
 }
 
-function preprocessMathlogMarkdown(markdown) {
+function resolvePreviewAssetPath(src, currentDir) {
+  if (!src || isExternalResource(src)) {
+    return src;
+  }
+  const assetPath = normalizeArticleRelativePath(currentDir || "", src);
+  return `/content/${assetPath.split("/").map(encodeURIComponent).join("/")}`;
+}
+
+function preprocessMathlogMarkdown(markdown, { currentDir = "" } = {}) {
   return markdown.replace(
     /!\[([^\]]*)\]\((\S+)\s+=(\d+)\)/g,
     (_match, alt, src, width) =>
-      `<img src="${escapeAttribute(src)}" alt="${escapeAttribute(alt)}" style="max-width: ${escapeAttribute(width)}px; width: 100%;">`,
+      `<img src="${escapeAttribute(resolvePreviewAssetPath(src, currentDir))}" alt="${escapeAttribute(alt)}" style="max-width: ${escapeAttribute(width)}px; width: 100%;">`,
   );
 }
 
@@ -1223,6 +1241,10 @@ function createMarkdownIt() {
     if (/^https?:\/\//i.test(href)) {
       token.attrSet("target", "_blank");
       token.attrSet("rel", "noreferrer noopener");
+    } else if (!isExternalResource(href) && path.posix.extname(href).toLowerCase() === ".md") {
+      const [targetPath, hash = ""] = href.split("#", 2);
+      const articlePath = normalizeArticleRelativePath(env.currentDir || "", targetPath);
+      token.attrSet("href", `/?file=${encodeURIComponent(articlePath)}${hash ? `#${escapeAttribute(hash)}` : ""}`);
     }
     return defaultLinkOpen(tokens, idx, options, env, self);
   };
@@ -1237,6 +1259,8 @@ function createMarkdownIt() {
     } else if (!token.attrGet("style")) {
       token.attrSet("style", "width: 100%;");
     }
+    const normalizedSrc = token.attrGet("src") || "";
+    token.attrSet("src", resolvePreviewAssetPath(normalizedSrc, env.currentDir || ""));
     return defaultImage(tokens, idx, options, env, self);
   };
 
@@ -1296,10 +1320,10 @@ async function preprocessFenceTokens(tokens) {
   }
 }
 
-async function renderMarkdown(markdown) {
+async function renderMarkdown(markdown, { currentDir = "" } = {}) {
   const md = createMarkdownIt();
-  const env = {};
-  const tokens = md.parse(preprocessMathlogMarkdown(markdown), env);
+  const env = { currentDir };
+  const tokens = md.parse(preprocessMathlogMarkdown(markdown, { currentDir }), env);
   assignMathlogBoxMetadata(tokens, env);
   await preprocessFenceTokens(tokens);
   return md.renderer.render(tokens, md.options, env);
@@ -2280,8 +2304,9 @@ async function renderHtml(contentRoot, selectedPath, { embedFonts = false } = {}
   const article = selectedArticle
     ? await readArticleFile(selectedArticle.filePath)
     : { markdown: "# No articles\n\nCreate Markdown files under `public`.", meta: {} };
+  const currentDir = selectedArticle ? path.posix.dirname(selectedArticle.relativePath) : "";
   const [body, highlightCss] = await Promise.all([
-    renderMarkdown(article.markdown),
+    renderMarkdown(article.markdown, { currentDir: currentDir === "." ? "" : currentDir }),
     loadHighlightCss(),
   ]);
   return createHtmlDocument({
@@ -2296,6 +2321,21 @@ async function renderHtml(contentRoot, selectedPath, { embedFonts = false } = {}
 }
 
 function getContentType(filePath) {
+  if (filePath.endsWith(".png")) {
+    return "image/png";
+  }
+  if (filePath.endsWith(".jpg") || filePath.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (filePath.endsWith(".gif")) {
+    return "image/gif";
+  }
+  if (filePath.endsWith(".svg")) {
+    return "image/svg+xml; charset=utf-8";
+  }
+  if (filePath.endsWith(".webp")) {
+    return "image/webp";
+  }
   if (filePath.endsWith(".js")) {
     return "text/javascript; charset=utf-8";
   }
@@ -2336,6 +2376,21 @@ async function createServer({ contentRoot, embedFonts = false, host = DEFAULT_HO
         });
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(html);
+        return;
+      }
+
+      if (pathname.startsWith("/content/")) {
+        const relativeAssetPath = decodeURIComponent(pathname.replace(/^\/content\//, ""));
+        const assetFile = path.join(contentRoot, relativeAssetPath);
+        const normalized = path.normalize(assetFile);
+        if (!normalized.startsWith(contentRoot)) {
+          res.writeHead(403);
+          res.end("Forbidden");
+          return;
+        }
+        const body = await fsp.readFile(normalized);
+        res.writeHead(200, { "content-type": getContentType(normalized) });
+        res.end(body);
         return;
       }
 

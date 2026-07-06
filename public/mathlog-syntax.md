@@ -17,6 +17,10 @@ private: false
 
 ![dummy image](https://example.com/image.png =500)
 
+![local svg](assets/sample.svg =240)
+
+[関連ページ](related.md)
+
 (1) 丸括弧の番号あり
 	- 下位項目1
 	- 下位項目2

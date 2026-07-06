@@ -79,8 +79,14 @@ test("renders representative Mathlog syntax", async () => {
     assert.match(html, /class="mathlog-box mathlog-box--def" id="trig-def"/);
     assert.match(html, /class="mathlog-reference" href="#trig-def">定義 1 三角関数<\/a>/);
     assert.match(html, /<img src="https:\/\/example.com\/image.png" alt="dummy image" style="max-width: 500px; width: 100%;">/);
+    assert.match(html, /<img src="\/content\/assets\/sample.svg" alt="local svg" style="max-width: 240px; width: 100%;">/);
+    assert.match(html, /<a href="\/\?file=related.md">関連ページ<\/a>/);
     assert.match(html, /<span class="mathlog-list__marker">\(1\)<\/span>/);
     assert.match(html, /<ul>\s*<li>下位項目1<\/li>\s*<li>下位項目2<\/li>\s*<\/ul>/);
+
+    const assetResponse = await fetch(new URL("/content/assets/sample.svg", server.url));
+    assert.equal(assetResponse.status, 200);
+    assert.equal(assetResponse.headers.get("content-type"), "image/svg+xml; charset=utf-8");
   } finally {
     await server.stop();
   }

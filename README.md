@@ -56,6 +56,7 @@ npx mathlog version
 - `[[label]]` による形式ブロック参照
 - `(1)`, `[1]`, `R1.`, `(R1)`, `[R1]` の箇条書き
 - `![alt](url =500)` の画像最大幅指定
+- `public/` 内の相対画像と、相対 `.md` 記事リンク
 - Mathlog に合わせた太字赤色、斜体、取り消し線、表、引用、コード、HTML
 - `title`、`tags`、`private` の front matter 表示
 
