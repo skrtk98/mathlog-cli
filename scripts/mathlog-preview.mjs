@@ -68,7 +68,9 @@ let packageVersion;
 function usage() {
   return [
     "Usage:",
-    "  node scripts/mathlog-preview.mjs serve [content-dir] [--port 8888]",
+    "  mathlog preview [content-dir] [--port 8888]",
+    "  mathlog new <basename> [content-dir]",
+    "  mathlog version",
   ].join("\n");
 }
 
@@ -182,6 +184,13 @@ function ensureDocsPath(filePath) {
   }
 }
 
+function ensureInsidePath(parentPath, childPath) {
+  const relativePath = path.relative(parentPath, childPath);
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new Error(`Path must be inside ${parentPath}: ${childPath}`);
+  }
+}
+
 function parseServeArgs(args) {
   const port = parsePort(args);
   const positionalArgs = [];
@@ -201,8 +210,55 @@ function parseServeArgs(args) {
   };
 }
 
+function sanitizeArticleBasename(value) {
+  const basename = String(value || "")
+    .trim()
+    .replace(/\.md$/i, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!basename) {
+    throw new Error("Article basename is required.");
+  }
+  if (basename === "." || basename === ".." || basename.includes("..")) {
+    throw new Error(`Invalid article basename: ${value}`);
+  }
+  return basename;
+}
+
+function createArticleTemplate(basename) {
+  return [
+    `# ${basename}`,
+    "",
+    "ここに本文を書きます。",
+    "",
+  ].join("\n");
+}
+
+async function createArticleFile(contentRoot, basename) {
+  const safeBasename = sanitizeArticleBasename(basename);
+  await fsp.mkdir(contentRoot, { recursive: true });
+  const filePath = path.join(contentRoot, `${safeBasename}.md`);
+  ensureInsidePath(contentRoot, filePath);
+  try {
+    const handle = await fsp.open(filePath, "wx");
+    try {
+      await handle.writeFile(createArticleTemplate(safeBasename), "utf8");
+    } finally {
+      await handle.close();
+    }
+  } catch (error) {
+    if (error?.code === "EEXIST") {
+      throw new Error(`Article already exists: ${path.relative(DOCS_ROOT, filePath)}`);
+    }
+    throw error;
+  }
+  return {
+    filePath,
+    relativePath: path.relative(contentRoot, filePath).split(path.sep).join("/"),
+  };
+}
+
 async function ensureContentRoot(contentRoot) {
-  ensureDocsPath(contentRoot);
   try {
     const stats = await fsp.stat(contentRoot);
     if (!stats.isDirectory()) {
@@ -1366,6 +1422,29 @@ ${highlightCss}
         white-space: nowrap;
       }
 
+      .app-header__actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .new-article-button {
+        appearance: none;
+        border: 1px solid #1f883d;
+        border-radius: 6px;
+        background: #1f883d;
+        color: #fff;
+        padding: 0.38rem 0.75rem;
+        font: inherit;
+        font-weight: 700;
+        line-height: 1.2;
+        cursor: pointer;
+      }
+
+      .new-article-button:hover {
+        background: #1a7f37;
+      }
+
       .app-shell {
         display: grid;
         grid-template-columns: 280px minmax(0, 1fr);
@@ -1926,6 +2005,36 @@ ${highlightCss}
         });
       }
 
+      function attachNewArticleAction() {
+        const button = document.querySelector("[data-new-article]");
+        if (!button) {
+          return;
+        }
+        button.addEventListener("click", async () => {
+          const basename = window.prompt("記事ファイルのベース名");
+          if (!basename) {
+            return;
+          }
+          button.disabled = true;
+          try {
+            const response = await fetch("/api/articles", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ basename }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(payload.error || "記事を作成できませんでした。");
+            }
+            window.location.href = "/?file=" + encodeURIComponent(payload.relativePath);
+          } catch (error) {
+            window.alert(error?.message || String(error));
+          } finally {
+            button.disabled = false;
+          }
+        });
+      }
+
       async function main() {
         mermaid.initialize({
           startOnLoad: false,
@@ -1945,6 +2054,7 @@ ${highlightCss}
 
         attachCodeActions();
         attachDiagramActions();
+        attachNewArticleAction();
 
         window.__markdownItRenderReady__ = true;
         document.documentElement.dataset.renderReady = "true";
@@ -1967,9 +2077,12 @@ ${highlightCss}
         <span>mathlog-preview</span>
         <small>local Mathlog article preview</small>
       </div>
-      <nav class="app-header__links" aria-label="official links">
-        ${renderOfficialLinks()}
-      </nav>
+      <div class="app-header__actions">
+        <button class="new-article-button" type="button" data-new-article>新規記事作成</button>
+        <nav class="app-header__links" aria-label="official links">
+          ${renderOfficialLinks()}
+        </nav>
+      </div>
     </header>
     <div class="app-shell">
       <aside class="article-nav">
@@ -2032,6 +2145,22 @@ async function createServer({ contentRoot, embedFonts = false, port = 8888 }) {
     const pathname = requestUrl.pathname;
 
     try {
+      if (pathname === "/api/articles" && req.method === "POST") {
+        let rawBody = "";
+        req.setEncoding("utf8");
+        for await (const chunk of req) {
+          rawBody += chunk;
+          if (rawBody.length > 8192) {
+            throw new Error("Request body is too large.");
+          }
+        }
+        const payload = JSON.parse(rawBody || "{}");
+        const article = await createArticleFile(contentRoot, payload.basename);
+        res.writeHead(201, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(article));
+        return;
+      }
+
       if (pathname === "/") {
         const html = await renderHtml(contentRoot, requestUrl.searchParams.get("file") || "", {
           embedFonts,
@@ -2168,12 +2297,35 @@ async function runServe(args) {
   }
 }
 
+async function runNew(args) {
+  if (args.length < 1 || args.length > 2) {
+    throw new Error(usage());
+  }
+  const contentRoot = path.resolve(process.cwd(), args[1] || DEFAULT_CONTENT_DIR);
+  const article = await createArticleFile(contentRoot, args[0]);
+  console.log(formatLabelValue("created", formatPathValue(article.filePath)));
+}
+
 async function main() {
   const [command, ...args] = process.argv.slice(2);
 
   switch (command) {
+    case "preview":
     case "serve":
       await runServe(args);
+      return;
+    case "new":
+      await runNew(args);
+      return;
+    case "version":
+    case "--version":
+    case "-v":
+      console.log(loadPackageVersion());
+      return;
+    case "help":
+    case "--help":
+    case "-h":
+      console.log(usage());
       return;
     default:
       throw new Error(usage());

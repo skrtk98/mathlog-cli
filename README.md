@@ -16,10 +16,26 @@ npm install
 npm run preview
 ```
 
-既定では Qiita CLI と同じく `public/` 配下の Markdown を一覧表示します。別ディレクトリを使う場合:
+既定では Qiita CLI と同じく `public/` 配下の Markdown を一覧表示します。プレビュー画面の「新規記事作成」ボタンから `public/` に記事を追加できます。
+
+CLI から記事を作成する:
+
+```bash
+npm run new -- my-article
+```
+
+別ディレクトリを使う場合:
 
 ```bash
 npm run preview -- path/to/articles --port 8888
+```
+
+bin として実行する場合:
+
+```bash
+npx mathlog preview
+npx mathlog new my-article
+npx mathlog version
 ```
 
 ## 対応済みの Mathlog 構文
