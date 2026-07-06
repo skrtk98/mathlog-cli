@@ -679,6 +679,52 @@ function mathBlockRule(state, startLine, endLine, silent) {
   return true;
 }
 
+function singleDollarBlockRule(state, startLine, endLine, silent) {
+  const firstLine = getLineText(state, startLine);
+  const trimmedFirstLine = firstLine.trimStart();
+  if (!trimmedFirstLine.startsWith("$") || trimmedFirstLine.startsWith("$$")) {
+    return false;
+  }
+
+  const afterOpener = trimmedFirstLine.slice(1);
+  const collected = [];
+  let nextLine = startLine + 1;
+  let foundClose = false;
+
+  if (afterOpener.trimEnd().endsWith("$") && afterOpener.trim().length > 1) {
+    collected.push(afterOpener.replace(/\$\s*$/, ""));
+    foundClose = true;
+  } else {
+    if (afterOpener.trim().length > 0) {
+      collected.push(afterOpener);
+    }
+    for (; nextLine < endLine; nextLine += 1) {
+      const line = getLineText(state, nextLine);
+      if (line.trim() === "$") {
+        foundClose = true;
+        nextLine += 1;
+        break;
+      }
+      collected.push(line);
+    }
+  }
+
+  if (!foundClose || !containsXyPic(collected.join("\n"))) {
+    return false;
+  }
+
+  if (!silent) {
+    const token = state.push("math_block", "div", 0);
+    const parsed = parseMathAlignment(collected.join("\n").trim());
+    token.content = parsed.content;
+    token.meta = { align: parsed.align };
+    token.map = [startLine, nextLine];
+  }
+
+  state.line = nextLine;
+  return true;
+}
+
 function beginEnvironmentRule(state, startLine, endLine, silent) {
   const firstLine = getLineText(state, startLine);
   const beginMatch = firstLine.trimStart().match(/^\\begin\{([^}]+)\}/);
@@ -728,7 +774,7 @@ function renderServerMath(content, { display, inline = false }) {
     const tag = inline ? "span" : "div";
     const className = inline
       ? "mathlog-math mathlog-math--inline mathlog-math--server"
-      : "mathlog-math__server-svg";
+      : "mathlog-math mathlog-math--block mathlog-math--left mathlog-math--server mathlog-math__server-svg";
     return `<${tag} class="${className}">${html}</${tag}>`;
   } catch {
     const delimiter = inline ? ["\\(", "\\)"] : ["\\[", "\\]"];
@@ -1069,8 +1115,91 @@ function resolvePreviewAssetPath(src, currentDir) {
   return `/content/${assetPath.split("/").map(encodeURIComponent).join("/")}`;
 }
 
-function preprocessMathlogMarkdown(markdown, { currentDir = "" } = {}) {
-  return markdown
+function readBalancedTeXCommand(source, start) {
+  const openIndex = source.indexOf("{", start);
+  if (openIndex === -1) {
+    return null;
+  }
+
+  let depth = 0;
+  for (let index = openIndex; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "\\" && index + 1 < source.length) {
+      index += 1;
+      continue;
+    }
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          end: index + 1,
+          tex: source.slice(start, index + 1),
+        };
+      }
+    }
+  }
+  return null;
+}
+
+function readXyPicSnippet(source, start) {
+  if (source.startsWith("\\begin{xy}", start)) {
+    const close = "\\end{xy}";
+    const end = source.indexOf(close, start + "\\begin{xy}".length);
+    if (end === -1) {
+      return null;
+    }
+    return {
+      end: end + close.length,
+      tex: source.slice(start, end + close.length),
+    };
+  }
+
+  if (source.startsWith("\\xymatrix", start)) {
+    return readBalancedTeXCommand(source, start);
+  }
+
+  return null;
+}
+
+function pushHtmlPlaceholder(htmlBlocks, html) {
+  const index = htmlBlocks.push(html) - 1;
+  return `\n<!--MATHLOG_HTML_${index}-->\n`;
+}
+
+function restoreHtmlPlaceholders(html, htmlBlocks) {
+  return html.replace(/<!--MATHLOG_HTML_(\d+)-->/g, (_match, index) => htmlBlocks[Number(index)] || "");
+}
+
+function replaceXyPicSnippets(markdown, htmlBlocks) {
+  let output = "";
+  for (let index = 0; index < markdown.length;) {
+    if (markdown[index] === "$") {
+      const snippet = readXyPicSnippet(markdown, index + 1);
+      if (snippet) {
+        const hasClosingDollar = markdown[snippet.end] === "$";
+        output += pushHtmlPlaceholder(htmlBlocks, renderServerMath(snippet.tex, { display: true }));
+        index = snippet.end + (hasClosingDollar ? 1 : 0);
+        continue;
+      }
+    }
+
+    const snippet = readXyPicSnippet(markdown, index);
+    if (snippet) {
+      output += pushHtmlPlaceholder(htmlBlocks, renderServerMath(snippet.tex, { display: true }));
+      index = snippet.end;
+      continue;
+    }
+
+    output += markdown[index];
+    index += 1;
+  }
+  return output;
+}
+
+function preprocessMathlogMarkdown(markdown, { currentDir = "", htmlBlocks = [] } = {}) {
+  return replaceXyPicSnippets(markdown, htmlBlocks)
     .replace(/([^\s&])&&&(\s*)(?=\r?\n|$)/g, "$1\n&&&$2")
     .replace(
       /!\[([^\]]*)\]\((\S+)\s+=(\d+)\)/g,
@@ -1095,6 +1224,9 @@ function createMarkdownIt() {
   md.use(markdownItDeflist);
 
   md.inline.ruler.before("escape", "math_inline", mathInlineRule);
+  md.block.ruler.before("fence", "single_dollar_math_block", singleDollarBlockRule, {
+    alt: ["paragraph", "reference", "blockquote", "list"],
+  });
   md.block.ruler.before("fence", "math_block", mathBlockRule, {
     alt: ["paragraph", "reference", "blockquote", "list"],
   });
@@ -1193,9 +1325,10 @@ function createMarkdownIt() {
 async function renderMarkdown(markdown, { currentDir = "" } = {}) {
   const md = createMarkdownIt();
   const env = { currentDir };
-  const tokens = md.parse(preprocessMathlogMarkdown(markdown, { currentDir }), env);
+  const htmlBlocks = [];
+  const tokens = md.parse(preprocessMathlogMarkdown(markdown, { currentDir, htmlBlocks }), env);
   assignMathlogBoxMetadata(tokens, env);
-  return md.renderer.render(tokens, md.options, env);
+  return restoreHtmlPlaceholders(md.renderer.render(tokens, md.options, env), htmlBlocks);
 }
 
 function parseFrontMatter(markdown) {

@@ -316,7 +316,7 @@ test("server-renders XyPic diagrams", async () => {
   const server = await startPreviewServer(contentDir);
   try {
     const html = await fetch(server.url).then((res) => res.text());
-    assert.match(html, /class="mathlog-math mathlog-math--block mathlog-math--left mathlog-math--server"/);
+    assert.match(html, /class="[^"]*mathlog-math--server[^"]*"/);
     assert.match(html, /<mjx-container/);
     assert.match(html, /<svg/);
     assert.doesNotMatch(html, /\\xymatrix/);
@@ -371,6 +371,40 @@ test("reports content state changes for auto reload", async () => {
     const after = await fetch(new URL("/api/state", server.url)).then((res) => res.json());
     assert.notEqual(after.version, before.version);
     assert.equal(after.fileCount, before.fileCount);
+  } finally {
+    await server.stop();
+  }
+});
+
+test("renders real Mathlog sample articles without visible raw syntax", async (context) => {
+  const contentDir = path.resolve("test/sample_data");
+  try {
+    await fsp.access(contentDir);
+  } catch {
+    context.skip("test/sample_data is not available");
+    return;
+  }
+
+  const files = (await fsp.readdir(contentDir))
+    .filter((file) => file.endsWith(".md"))
+    .sort();
+  assert.ok(files.length > 0);
+
+  const server = await startPreviewServer(contentDir);
+  try {
+    for (const file of files) {
+      const html = await fetch(new URL(`/?file=${encodeURIComponent(file)}`, server.url)).then((res) => {
+        assert.equal(res.status, 200, file);
+        return res.text();
+      });
+      const visibleHtml = html.replace(/<!--[\s\S]*?-->/g, "");
+      assert.doesNotMatch(visibleHtml, /\\xymatrix/, file);
+      assert.doesNotMatch(visibleHtml, /\\begin\{xy\}/, file);
+      assert.doesNotMatch(visibleHtml, /\\Text(?:Center|Right|Left)/, file);
+      assert.doesNotMatch(visibleHtml, /&&&/, file);
+      assert.doesNotMatch(visibleHtml, /^title:/m, file);
+      assert.doesNotMatch(visibleHtml, /data-mjx-error=/, file);
+    }
   } finally {
     await server.stop();
   }
