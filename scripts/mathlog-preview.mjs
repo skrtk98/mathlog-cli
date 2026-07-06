@@ -195,6 +195,11 @@ function ensureInsidePath(parentPath, childPath) {
   }
 }
 
+function isInsidePath(parentPath, childPath) {
+  const relativePath = path.relative(parentPath, childPath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+}
+
 function parseServeArgs(args) {
   const config = loadConfig();
   const port = parsePort(args, config.port);
@@ -2383,7 +2388,7 @@ async function createServer({ contentRoot, embedFonts = false, host = DEFAULT_HO
         const relativeAssetPath = decodeURIComponent(pathname.replace(/^\/content\//, ""));
         const assetFile = path.join(contentRoot, relativeAssetPath);
         const normalized = path.normalize(assetFile);
-        if (!normalized.startsWith(contentRoot)) {
+        if (!isInsidePath(contentRoot, normalized)) {
           res.writeHead(403);
           res.end("Forbidden");
           return;

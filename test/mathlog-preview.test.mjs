@@ -87,6 +87,9 @@ test("renders representative Mathlog syntax", async () => {
     const assetResponse = await fetch(new URL("/content/assets/sample.svg", server.url));
     assert.equal(assetResponse.status, 200);
     assert.equal(assetResponse.headers.get("content-type"), "image/svg+xml; charset=utf-8");
+
+    const forbiddenResponse = await fetch(new URL("/content/assets%2f..%2f..%2fpackage.json", server.url));
+    assert.equal(forbiddenResponse.status, 403);
   } finally {
     await server.stop();
   }
