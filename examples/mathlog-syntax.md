@@ -11,6 +11,8 @@
 ![dummy image](https://example.com/image.png =500)
 
 (1) 丸括弧の番号あり
+	- 下位項目1
+	- 下位項目2
 (2) 2つ目
 
 [1] 角括弧の番号あり

@@ -597,6 +597,10 @@ function getLineText(state, line) {
   return state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]);
 }
 
+function getRawLineText(state, line) {
+  return state.src.slice(state.bMarks[line], state.eMarks[line]);
+}
+
 function parseMathAlignment(content) {
   const match = content.match(/^\s*\\Text(Center|Right|Left)\b\s*/);
   if (!match) {
@@ -864,6 +868,45 @@ function parseMathlogListMarker(line) {
   return null;
 }
 
+function parseIndentedListMarker(line) {
+  const unorderedMatch = line.match(/^\s+[-*+]\s+(.+)$/);
+  if (unorderedMatch) {
+    return { ordered: false, content: unorderedMatch[1] };
+  }
+
+  const orderedMatch = line.match(/^\s+\d+\.\s+(.+)$/);
+  if (orderedMatch) {
+    return { ordered: true, content: orderedMatch[1] };
+  }
+
+  return null;
+}
+
+function pushInlineToken(state, content) {
+  const inlineToken = state.push("inline", "", 0);
+  inlineToken.content = content;
+  inlineToken.children = [];
+}
+
+function pushNestedStandardList(state, items, ordered) {
+  const listOpen = state.push(ordered ? "ordered_list_open" : "bullet_list_open", ordered ? "ol" : "ul", 1);
+  listOpen.block = true;
+  if (ordered) {
+    listOpen.attrSet("start", "1");
+  }
+
+  for (const item of items) {
+    const itemOpen = state.push("list_item_open", "li", 1);
+    itemOpen.block = true;
+    pushInlineToken(state, item);
+    const itemClose = state.push("list_item_close", "li", -1);
+    itemClose.block = true;
+  }
+
+  const listClose = state.push(ordered ? "ordered_list_close" : "bullet_list_close", ordered ? "ol" : "ul", -1);
+  listClose.block = true;
+}
+
 function mathlogListRule(state, startLine, endLine, silent) {
   const firstLine = getLineText(state, startLine);
   const firstMarker = parseMathlogListMarker(firstLine);
@@ -892,12 +935,51 @@ function mathlogListRule(state, startLine, endLine, silent) {
     itemOpen.block = true;
     itemOpen.meta = { marker: marker.marker };
 
-    const inlineToken = state.push("inline", "", 0);
-    inlineToken.content = marker.content;
-    inlineToken.children = [];
+    pushInlineToken(state, marker.content);
+
+    nextLine += 1;
+
+    let nestedItems = [];
+    let nestedOrdered = null;
+    for (; nextLine < endLine; nextLine += 1) {
+      const rawLine = getRawLineText(state, nextLine);
+      const line = getLineText(state, nextLine);
+      const nextMarker = parseMathlogListMarker(line);
+      if (nextMarker) {
+        break;
+      }
+      if (line.trim() === "") {
+        continue;
+      }
+      if (!/^\s+/.test(rawLine)) {
+        break;
+      }
+
+      const nestedMarker = parseIndentedListMarker(rawLine);
+      if (!nestedMarker) {
+        break;
+      }
+
+      if (nestedOrdered === null) {
+        nestedOrdered = nestedMarker.ordered;
+      }
+      if (nestedMarker.ordered !== nestedOrdered) {
+        if (nestedItems.length > 0) {
+          pushNestedStandardList(state, nestedItems, nestedOrdered);
+        }
+        nestedItems = [];
+        nestedOrdered = nestedMarker.ordered;
+      }
+      nestedItems.push(nestedMarker.content);
+    }
+
+    if (nestedItems.length > 0) {
+      pushNestedStandardList(state, nestedItems, Boolean(nestedOrdered));
+    }
 
     const itemClose = state.push("mathlog_list_item_close", "li", -1);
     itemClose.block = true;
+    nextLine -= 1;
   }
 
   const closeToken = state.push("mathlog_list_close", "ol", -1);
@@ -914,11 +996,11 @@ function renderMathlogListOpen(tokens, idx) {
 
 function renderMathlogListItemOpen(tokens, idx) {
   const marker = tokens[idx].meta?.marker || "";
-  return `<li><span class="mathlog-list__marker">${escapeHtml(marker)}</span><span class="mathlog-list__content">`;
+  return `<li><span class="mathlog-list__marker">${escapeHtml(marker)}</span><div class="mathlog-list__content">`;
 }
 
 function renderMathlogListItemClose() {
-  return "</span></li>\n";
+  return "</div></li>\n";
 }
 
 function preprocessMathlogMarkdown(markdown) {
@@ -1421,6 +1503,14 @@ ${highlightCss}
       .mathlog-list__marker {
         color: var(--muted);
         font-variant-numeric: tabular-nums;
+      }
+
+      .mathlog-list__content > :first-child {
+        margin-top: 0;
+      }
+
+      .mathlog-list__content > :last-child {
+        margin-bottom: 0;
       }
 
       .table-scroll {
