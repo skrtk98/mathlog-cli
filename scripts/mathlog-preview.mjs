@@ -136,7 +136,9 @@ function sanitizeArticleBasename(value) {
   const basename = String(value || "")
     .trim()
     .replace(/\.md$/i, "")
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/[\\/]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/[^\p{L}\p{N}._-]+/gu, "-")
     .replace(/^-+|-+$/g, "");
   if (!basename) {
     throw new Error("Article basename is required.");

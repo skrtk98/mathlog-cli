@@ -37,7 +37,7 @@ async function startPreviewServer(contentDir) {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     const match = stdout.match(/http:\/\/localhost:(\d+)\//);
-    if (match) {
+    if (match && /^Content directory: /m.test(stdout)) {
       return {
         child,
         url: match[0],
@@ -130,6 +130,24 @@ test("creates an article from the CLI", async () => {
   const markdown = await fsp.readFile(path.join(contentDir, "newArticle001.md"), "utf8");
   assert.match(markdown, /^title: newArticle001/m);
   assert.match(markdown, /^# newArticle001/m);
+});
+
+test("creates an article with a Japanese basename", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-cli-ja-"));
+  const contentDir = path.join(root, "public");
+  const child = spawn(
+    process.execPath,
+    [SCRIPT_FILE, "new", "数学 ノート.md", contentDir],
+    {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  const [code] = await once(child, "exit");
+  assert.equal(code, 0);
+  const markdown = await fsp.readFile(path.join(contentDir, "数学-ノート.md"), "utf8");
+  assert.match(markdown, /^title: 数学-ノート/m);
+  assert.match(markdown, /^# 数学-ノート/m);
 });
 
 test("initializes a content directory", async () => {
