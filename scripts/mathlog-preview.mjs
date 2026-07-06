@@ -1355,7 +1355,7 @@ function renderOfficialLinks() {
 
 function renderArticleNav(articles, selectedPath) {
   if (articles.length === 0) {
-    return '<p class="article-nav__empty">No markdown files in public.</p>';
+    return '<p class="article-nav__empty">No markdown files.</p>';
   }
 
   return `<ol class="article-nav__list">
@@ -2266,7 +2266,7 @@ async function renderHtml(contentRoot, selectedPath, { embedFonts = false } = {}
     articles.find((article) => article.relativePath === selectedPath) || articles[0] || null;
   const article = selectedArticle
     ? await readArticleFile(selectedArticle.filePath)
-    : { markdown: "# No articles\n\nCreate Markdown files under `public`.", meta: {} };
+    : { markdown: "# 記事がありません\n\n「新規記事作成」から Markdown ファイルを作成できます。", meta: {} };
   const currentDir = selectedArticle ? path.posix.dirname(selectedArticle.relativePath) : "";
   const [body, highlightCss] = await Promise.all([
     renderMarkdown(article.markdown, { currentDir: currentDir === "." ? "" : currentDir }),

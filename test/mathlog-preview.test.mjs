@@ -174,6 +174,24 @@ test("creates an article from the preview API", async () => {
   }
 });
 
+test("renders an empty project without a hard-coded public directory message", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-empty-"));
+  const contentDir = path.join(root, "articles");
+  await fsp.mkdir(contentDir, { recursive: true });
+
+  const server = await startPreviewServer(contentDir);
+  try {
+    const html = await fetch(server.url).then((res) => res.text());
+    assert.match(html, /No markdown files\./);
+    assert.match(html, /<h2 id="記事がありません">記事がありません<\/h2>/);
+    assert.match(html, /「新規記事作成」から Markdown ファイルを作成できます。/);
+    assert.doesNotMatch(html, /No markdown files in public/);
+    assert.doesNotMatch(html, /Create Markdown files under `public`/);
+  } finally {
+    await server.stop();
+  }
+});
+
 test("reports content state changes for auto reload", async () => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-state-"));
   const contentDir = path.join(root, "public");
