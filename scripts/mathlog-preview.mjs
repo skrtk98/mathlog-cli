@@ -1360,77 +1360,16 @@ async function loadHighlightCss() {
   return highlightCssPromise;
 }
 
-function buildFontCss(embedFonts) {
-  if (!embedFonts) {
-    return "";
-  }
-  return `
-      @font-face {
-        font-family: "Docs Latin";
-        src: url("/fonts/SegoeUI.ttf") format("truetype");
-        font-weight: 400;
-        font-style: normal;
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: "Docs Latin";
-        src: url("/fonts/SegoeUI-Bold.ttf") format("truetype");
-        font-weight: 700;
-        font-style: normal;
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: "Docs Sans JP";
-        src: url("/fonts/YuGothicUI-Regular.ttf") format("truetype");
-        font-weight: 400;
-        font-style: normal;
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: "Docs Sans JP";
-        src: url("/fonts/YuGothicUI-Bold.ttf") format("truetype");
-        font-weight: 700;
-        font-style: normal;
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: "Docs Mono";
-        src: url("/fonts/PlemolJPConsole-Regular.ttf") format("truetype");
-        font-weight: 400;
-        font-style: normal;
-        font-display: swap;
-      }
-
-      @font-face {
-        font-family: "Docs Mono";
-        src: url("/fonts/PlemolJPConsole-Bold.ttf") format("truetype");
-        font-weight: 700;
-        font-style: normal;
-        font-display: swap;
-      }
-`;
-}
-
 function createHtmlDocument({
   title,
   body,
   highlightCss,
-  embedFonts,
   articles = [],
   selectedPath = "",
   contentRoot = "",
 }) {
-  const fontCss = buildFontCss(embedFonts);
-  const fontFamily = embedFonts
-    ? '"Docs Latin", "Docs Sans JP", "Segoe UI", "Yu Gothic UI", system-ui, sans-serif'
-    : '"Segoe UI", "Yu Gothic UI", system-ui, sans-serif';
-  const monoFontFamily = embedFonts
-    ? '"Docs Mono", Consolas, ui-monospace, monospace'
-    : 'Consolas, ui-monospace, monospace';
+  const fontFamily = '"Segoe UI", "Yu Gothic UI", system-ui, sans-serif';
+  const monoFontFamily = 'Consolas, ui-monospace, monospace';
 
   return `<!DOCTYPE html>
 <html lang="ja">
@@ -1439,7 +1378,6 @@ function createHtmlDocument({
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${escapeAttribute(title)}</title>
     <style>
-${fontCss}
 ${highlightCss}
       :root {
         color-scheme: light;
@@ -2159,7 +2097,7 @@ ${body}
 `;
 }
 
-async function renderHtml(contentRoot, selectedPath, { embedFonts = false } = {}) {
+async function renderHtml(contentRoot, selectedPath) {
   const articles = await listMarkdownFiles(contentRoot);
   const selectedArticle =
     articles.find((article) => article.relativePath === selectedPath) || articles[0] || null;
@@ -2175,7 +2113,6 @@ async function renderHtml(contentRoot, selectedPath, { embedFonts = false } = {}
     title: selectedArticle ? selectedArticle.title : "mathlog-preview",
     body,
     highlightCss,
-    embedFonts,
     articles,
     selectedPath: selectedArticle?.relativePath || "",
     contentRoot,
@@ -2210,7 +2147,7 @@ function getContentType(filePath) {
   return "application/octet-stream";
 }
 
-async function createServer({ contentRoot, embedFonts = false, host = DEFAULT_HOST, port = DEFAULT_PORT }) {
+async function createServer({ contentRoot, host = DEFAULT_HOST, port = DEFAULT_PORT }) {
   const server = http.createServer(async (req, res) => {
     const requestUrl = new URL(req.url || "/", "http://localhost");
     const pathname = requestUrl.pathname;
@@ -2243,9 +2180,7 @@ async function createServer({ contentRoot, embedFonts = false, host = DEFAULT_HO
       }
 
       if (pathname === "/") {
-        const html = await renderHtml(contentRoot, requestUrl.searchParams.get("file") || "", {
-          embedFonts,
-        });
+        const html = await renderHtml(contentRoot, requestUrl.searchParams.get("file") || "");
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(html);
         return;
@@ -2283,20 +2218,6 @@ async function createServer({ contentRoot, embedFonts = false, host = DEFAULT_HO
 
         res.writeHead(404);
         res.end("Not found");
-        return;
-      }
-
-      if (pathname.startsWith("/fonts/")) {
-        const fontFile = path.join(DOCS_ROOT, pathname.replace(/^\//, ""));
-        const normalized = path.normalize(fontFile);
-        if (!normalized.startsWith(path.join(DOCS_ROOT, "fonts"))) {
-          res.writeHead(403);
-          res.end("Forbidden");
-          return;
-        }
-        const body = await fsp.readFile(normalized);
-        res.writeHead(200, { "content-type": getContentType(normalized) });
-        res.end(body);
         return;
       }
 
