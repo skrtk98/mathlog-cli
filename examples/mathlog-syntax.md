@@ -1,5 +1,9 @@
 # Mathlog syntax preview
 
+## ラベル付き見出し [heading-label]
+
+[この見出しへのリンク](#heading-label)
+
 ここで、$x_i>0$ かつ $a \ne 0$ とします。
 
 **太字赤色**、*斜体*、***斜体太字赤色***、~~取り消し~~。

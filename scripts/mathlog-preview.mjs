@@ -475,6 +475,38 @@ function slugifyHeading(text) {
     .replace(/-+/g, "-");
 }
 
+function parseHeadingLabel(text) {
+  const match = text.match(/\s+\[([^\]]+)\]\s*$/);
+  if (!match) {
+    return { text, label: "" };
+  }
+  return {
+    text: text.slice(0, match.index).trimEnd(),
+    label: match[1].trim(),
+  };
+}
+
+function stripHeadingLabel(inlineToken, label) {
+  if (!inlineToken || !label) {
+    return;
+  }
+
+  const pattern = new RegExp(`\\s+\\[${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]\\s*$`);
+  inlineToken.content = inlineToken.content.replace(pattern, "");
+  const children = inlineToken.children || [];
+  for (let index = children.length - 1; index >= 0; index -= 1) {
+    const child = children[index];
+    if (child.type !== "text") {
+      continue;
+    }
+    child.content = child.content.replace(pattern, "");
+    if (child.content.length === 0) {
+      children.splice(index, 1);
+    }
+    break;
+  }
+}
+
 function escapeHtml(value) {
   return value
     .replaceAll("&", "&amp;")
@@ -965,8 +997,10 @@ function createMarkdownIt() {
   md.renderer.rules.heading_open = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
     const inlineToken = tokens[idx + 1];
-    const text = inlineToken?.type === "inline" ? inlineToken.content : "";
-    let slug = slugifyHeading(text) || `section-${idx}`;
+    const rawText = inlineToken?.type === "inline" ? inlineToken.content : "";
+    const { text, label } = parseHeadingLabel(rawText);
+    stripHeadingLabel(inlineToken, label);
+    let slug = label || slugifyHeading(text) || `section-${idx}`;
     const count = seenIds.get(slug) ?? 0;
     seenIds.set(slug, count + 1);
     if (count > 0) {
