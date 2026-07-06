@@ -1,7 +1,7 @@
 import fsp from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { DEFAULT_MACRO_PRESET_FILE, MACROS_FILE_NAME } from "./paths.js";
+import { USER_MACRO_PRESET_FILE, MACROS_FILE_NAME } from "./paths.js";
 
 export type MacroPackage = {
   id: string;
@@ -100,8 +100,8 @@ export async function writeMacroLibrary(library: MacroLibrary): Promise<MacroLib
   return normalized;
 }
 
-export async function readDefaultMacroPreset(): Promise<MacroLibrary> {
-  const raw = JSON.parse(await fsp.readFile(DEFAULT_MACRO_PRESET_FILE, "utf8"));
+export async function readUserMacroPreset(): Promise<MacroLibrary> {
+  const raw = JSON.parse(await fsp.readFile(USER_MACRO_PRESET_FILE, "utf8"));
   return normalizeMacroLibrary(raw);
 }
 

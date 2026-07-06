@@ -100,7 +100,7 @@ npx github:skrtk98/mathlog-cli new my-article
 
 ## マクロライブラリ
 
-プレビュー画面のヘッダーにある「マクロ設定」を押すと、`/macros` が新規タブで開きます。この画面では、Mathlog の標準マクロ設定に近い形で TeX マクロを登録できます。
+プレビュー画面のヘッダーにある「マクロ設定」を押すと、`/macros` が新規タブで開きます。この画面では、Mathlog のマクロ設定に近い形で TeX マクロを登録できます。
 
 マクロには次の項目を設定します。
 
@@ -111,7 +111,7 @@ npx github:skrtk98/mathlog-cli new my-article
 
 パッケージは追加、削除、有効化、無効化できます。無効化したパッケージに属するマクロは MathJax に渡されないため、プレビュー上でも無効になります。パッケージを削除すると、そのパッケージに属していたマクロは「指定なし」に戻ります。
 
-登録内容はプロジェクト直下の `mathlog.macros.json` に保存されます。clone 直後のデフォルトマクロは空です。スクショ由来の標準マクロは `presets/mathlog-default-macros.json` にあり、`/macros` の「スクショの標準マクロを読み込む」から明示的に取り込めます。
+登録内容はプロジェクト直下の `mathlog.macros.json` に保存されます。clone 直後のデフォルトマクロは空です。スクショ由来のマクロ例は `presets/mathlog-user-macros.json` にあり、`/macros` の「ユーザーマクロ例を読み込む」から明示的に取り込めます。
 
 ## 対応している Mathlog 構文
 
@@ -139,8 +139,8 @@ npx github:skrtk98/mathlog-cli new my-article
 .
 ├── public/                 # ローカル記事置き場
 ├── presets/                # 明示的に読み込めるマクロプリセット
-├── scripts/
-│   └── mathlog-preview.mjs # dist/main.js を呼ぶ互換 shim
+├── bin/
+│   └── mathlog.mjs         # npm bin 用の CLI エントリ
 ├── src/                    # TypeScript の実装とテスト
 ├── mathlog.config.json     # npm run init で作成
 ├── mathlog.macros.json     # マクロ登録時に作成

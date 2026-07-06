@@ -78,8 +78,8 @@ export function renderMacroManager(library: MacroLibrary): string {
   return `<section class="macro-manager" data-macro-manager>
         <div class="macro-manager__header">
           <div>
-            <h1>標準のマクロの設定</h1>
-            <p>Mathlog 互換の TeX マクロを登録します。標準マクロは必要なときだけ読み込みます。</p>
+            <h1>ユーザーマクロの設定</h1>
+            <p>Mathlog 互換の TeX マクロを登録します。デフォルトで登録されるマクロはありません。</p>
           </div>
           <a class="action-button" href="/">プレビューへ戻る</a>
         </div>
@@ -102,7 +102,7 @@ export function renderMacroManager(library: MacroLibrary): string {
               <input name="name" type="text" placeholder="パッケージ名">
               <button class="action-button" type="submit">パッケージ追加</button>
             </form>
-            <button class="action-button" type="button" data-macro-import-defaults>スクショの標準マクロを読み込む</button>
+            <button class="action-button" type="button" data-macro-import-user-preset>ユーザーマクロ例を読み込む</button>
           </div>
           <div class="macro-panel">
             <div class="macro-panel__title">

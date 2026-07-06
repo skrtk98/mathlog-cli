@@ -13,7 +13,7 @@ import {
   normalizeMacroCommand,
   normalizeMacroLibrary,
   normalizeMacroPackageId,
-  readDefaultMacroPreset,
+  readUserMacroPreset,
   readMacroLibrary,
   writeMacroLibrary,
 } from "./macro-library.js";
@@ -1427,9 +1427,9 @@ async function createServer({ contentRoot, host = DEFAULT_HOST, port = DEFAULT_P
         return;
       }
 
-      if (pathname === "/api/macros/import-defaults" && req.method === "POST") {
+      if (pathname === "/api/macros/import-user-preset" && req.method === "POST") {
         const library = await readMacroLibrary();
-        const preset = await readDefaultMacroPreset();
+        const preset = await readUserMacroPreset();
         const saved = await writeMacroLibrary(mergeMacroLibrary(library, preset));
         res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(saved));

@@ -131,8 +131,8 @@ function attachMacroManager() {
   const packageForm = root.querySelector("[data-macro-package-form]");
   root.querySelector("[data-macro-reload]")?.addEventListener("click", () => window.location.reload());
   root.querySelector("[data-macro-cancel]")?.addEventListener("click", () => form.reset());
-  root.querySelector("[data-macro-import-defaults]")?.addEventListener("click", async () => {
-    await requestJson("/api/macros/import-defaults", { method: "POST" });
+  root.querySelector("[data-macro-import-user-preset]")?.addEventListener("click", async () => {
+    await requestJson("/api/macros/import-user-preset", { method: "POST" });
     window.location.reload();
   });
   packageForm?.addEventListener("submit", async (event) => {

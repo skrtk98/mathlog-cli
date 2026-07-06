@@ -461,11 +461,11 @@ test("manages Mathlog macros and packages through the preview API", async () => 
   }
 });
 
-test("imports Mathlog default macro preset only when explicitly requested", async () => {
-  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-default-macros-"));
+test("imports Mathlog user macro preset only when explicitly requested", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-user-macros-"));
   const contentDir = path.join(root, "public");
   await fsp.mkdir(contentDir, { recursive: true });
-  await fsp.writeFile(path.join(contentDir, "macro.md"), "Default macro: $\\abs{x}$\n", "utf8");
+  await fsp.writeFile(path.join(contentDir, "macro.md"), "User macro: $\\abs{x}$\n", "utf8");
 
   const server = await startPreviewServer(contentDir, { cwd: root });
   try {
@@ -473,13 +473,13 @@ test("imports Mathlog default macro preset only when explicitly requested", asyn
     assert.match(before, /macros: \{\}/);
     assert.doesNotMatch(before, /記号/);
 
-    const importResponse = await fetch(new URL("/api/macros/import-defaults", server.url), {
+    const importResponse = await fetch(new URL("/api/macros/import-user-preset", server.url), {
       method: "POST",
     });
     assert.equal(importResponse.status, 200);
-    const importedDefaults = await importResponse.json();
-    assert.equal(importedDefaults.packages[0].name, "記号");
-    assert.ok(importedDefaults.macros.some((macro) => macro.command === "\\abs"));
+    const importedUserPreset = await importResponse.json();
+    assert.equal(importedUserPreset.packages[0].name, "記号");
+    assert.ok(importedUserPreset.macros.some((macro) => macro.command === "\\abs"));
 
     const after = await fetch(server.url).then((res) => res.text());
     assert.match(after, /macros: \{"abs":\["\\\\left\| #1 \\\\right\|",1\]/);

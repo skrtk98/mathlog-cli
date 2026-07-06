@@ -23,14 +23,14 @@
     "node": ">=20"
   },
   "bin": {
-    "mathlog": "./scripts/mathlog-preview.mjs"
+    "mathlog": "./bin/mathlog.mjs"
   },
   "files": [
     "dist/",
     "!dist/**/*.test.*",
+    "bin/mathlog.mjs",
     "presets/",
     "public/.gitkeep",
-    "scripts/mathlog-preview.mjs",
     "src/templates/"
   ],
   "scripts": {
