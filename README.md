@@ -10,7 +10,7 @@ Mathlog の記事 Markdown をローカルで確認するための CLI です。
 ## セットアップ
 
 ```bash
-git clone <this-repository-url>
+git clone https://github.com/skrtk98/mathlog-cli
 cd mathlog-cli
 npm install
 ```
