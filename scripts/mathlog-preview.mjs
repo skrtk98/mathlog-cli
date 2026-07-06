@@ -68,6 +68,7 @@ let packageVersion;
 function usage() {
   return [
     "Usage:",
+    "  mathlog init [content-dir]",
     "  mathlog preview [content-dir] [--port 8888]",
     "  mathlog new <basename> [content-dir]",
     "  mathlog version",
@@ -234,6 +235,17 @@ function createArticleTemplate(basename) {
   ].join("\n");
 }
 
+function createWelcomeTemplate() {
+  return [
+    "# welcome",
+    "",
+    "Mathlog の記事をここに書きます。",
+    "",
+    "$x^2+y^2=z^2$",
+    "",
+  ].join("\n");
+}
+
 async function createArticleFile(contentRoot, basename) {
   const safeBasename = sanitizeArticleBasename(basename);
   await fsp.mkdir(contentRoot, { recursive: true });
@@ -256,6 +268,17 @@ async function createArticleFile(contentRoot, basename) {
     filePath,
     relativePath: path.relative(contentRoot, filePath).split(path.sep).join("/"),
   };
+}
+
+async function initializeContentRoot(contentRoot) {
+  await fsp.mkdir(contentRoot, { recursive: true });
+  const articles = await listMarkdownFiles(contentRoot);
+  if (articles.length === 0) {
+    const filePath = path.join(contentRoot, "welcome.md");
+    await fsp.writeFile(filePath, createWelcomeTemplate(), { flag: "wx" });
+    return { contentRoot, createdSample: filePath };
+  }
+  return { contentRoot, createdSample: "" };
 }
 
 async function ensureContentRoot(contentRoot) {
@@ -2306,10 +2329,28 @@ async function runNew(args) {
   console.log(formatLabelValue("created", formatPathValue(article.filePath)));
 }
 
+async function runInit(args) {
+  if (args.length > 1) {
+    throw new Error(usage());
+  }
+  const contentRoot = path.resolve(process.cwd(), args[0] || DEFAULT_CONTENT_DIR);
+  const result = await initializeContentRoot(contentRoot);
+  printBanner();
+  console.log(formatLabelValue("content", formatPathValue(result.contentRoot)));
+  if (result.createdSample) {
+    console.log(formatLabelValue("sample", formatPathValue(result.createdSample)));
+  }
+  console.log(formatLabelValue("next", "npm run preview"));
+  console.log("");
+}
+
 async function main() {
   const [command, ...args] = process.argv.slice(2);
 
   switch (command) {
+    case "init":
+      await runInit(args);
+      return;
     case "preview":
     case "serve":
       await runServe(args);

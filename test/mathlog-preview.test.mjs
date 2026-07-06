@@ -99,6 +99,23 @@ test("creates an article from the CLI", async () => {
   assert.match(markdown, /^# newArticle001/m);
 });
 
+test("initializes a content directory", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-init-"));
+  const contentDir = path.join(root, "public");
+  const child = spawn(
+    process.execPath,
+    ["scripts/mathlog-preview.mjs", "init", contentDir],
+    {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  const [code] = await once(child, "exit");
+  assert.equal(code, 0);
+  const markdown = await fsp.readFile(path.join(contentDir, "welcome.md"), "utf8");
+  assert.match(markdown, /^# welcome/m);
+});
+
 test("creates an article from the preview API", async () => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-preview-"));
   const contentDir = path.join(root, "public");

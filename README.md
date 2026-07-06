@@ -10,6 +10,12 @@ npm install
 
 ## 使い方
 
+初期化:
+
+```bash
+npm run init
+```
+
 ローカルプレビュー:
 
 ```bash
@@ -34,6 +40,7 @@ bin として実行する場合:
 
 ```bash
 npx mathlog preview
+npx mathlog init
 npx mathlog new my-article
 npx mathlog version
 ```
