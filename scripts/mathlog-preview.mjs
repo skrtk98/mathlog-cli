@@ -31,6 +31,11 @@ const MERMAID_MODULE_FILE = path.join(
 const MERMAID_DIST_DIR = path.join(DOCS_ROOT, "node_modules", "mermaid", "dist");
 const MATHJAX_DIST_DIR = path.join(DOCS_ROOT, "node_modules", "mathjax-full", "es5");
 const DOT_LANGUAGES = new Set(["dot", "graphviz", "gv"]);
+const DEFAULT_CONTENT_DIR = "public";
+const OFFICIAL_LINKS = [
+  ["Mathlog", "https://mathlog.info/"],
+  ["公式リファレンス", "https://opthub.notion.site/1ca318bcf9ac8195ad0af2a1ae8319e0"],
+];
 const MATHLOG_BOX_TYPES = new Map([
   ["axm", "公理"],
   ["def", "定義"],
@@ -63,7 +68,7 @@ let packageVersion;
 function usage() {
   return [
     "Usage:",
-    "  node scripts/mathlog-preview.mjs serve <input.md> [--port 3030]",
+    "  node scripts/mathlog-preview.mjs serve [content-dir] [--port 8888]",
   ].join("\n");
 }
 
@@ -161,45 +166,57 @@ function printBanner() {
   console.log("");
 }
 
-function printServeSummary({ inputFile, url, interactive }) {
+function printServeSummary({ contentRoot, url, interactive }) {
   printBanner();
-  console.log(formatLabelValue("entry", formatPathValue(inputFile)));
+  console.log(formatLabelValue("content", formatPathValue(contentRoot)));
   console.log("");
   console.log(formatLabelValue("preview", styleCyan(url)));
   console.log(formatLabelValue("shortcuts", formatShortcutValue(interactive)));
   console.log("");
 }
 
-function resolveInputFile(inputArg) {
-  if (!inputArg) {
+function ensureDocsPath(filePath) {
+  const relativePath = path.relative(DOCS_ROOT, filePath);
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new Error(`Path must be inside ${DOCS_ROOT}: ${filePath}`);
+  }
+}
+
+function parseServeArgs(args) {
+  const port = parsePort(args);
+  const positionalArgs = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === "--port") {
+      index += 1;
+      continue;
+    }
+    positionalArgs.push(args[index]);
+  }
+  if (positionalArgs.length > 1) {
     throw new Error(usage());
   }
-  return path.resolve(process.cwd(), inputArg);
+  return {
+    contentRoot: path.resolve(process.cwd(), positionalArgs[0] || DEFAULT_CONTENT_DIR),
+    port,
+  };
 }
 
-function ensureDocsFile(inputFile) {
-  const relativePath = path.relative(DOCS_ROOT, inputFile);
-  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-    throw new Error(`Input file must be inside ${DOCS_ROOT}: ${inputFile}`);
-  }
-}
-
-async function ensureInputFile(inputFile) {
-  ensureDocsFile(inputFile);
-  if (path.extname(inputFile).toLowerCase() !== ".md") {
-    throw new Error(`Input file must be a markdown file: ${inputFile}`);
-  }
+async function ensureContentRoot(contentRoot) {
+  ensureDocsPath(contentRoot);
   try {
-    await fsp.access(inputFile);
+    const stats = await fsp.stat(contentRoot);
+    if (!stats.isDirectory()) {
+      throw new Error(`Content path must be a directory: ${contentRoot}`);
+    }
   } catch {
-    throw new Error(`Input file not found: ${inputFile}`);
+    throw new Error(`Content directory not found: ${contentRoot}`);
   }
 }
 
 function parsePort(args) {
   const flagIndex = args.findIndex((arg) => arg === "--port");
   if (flagIndex === -1) {
-    return 3030;
+    return 8888;
   }
   const value = Number.parseInt(args[flagIndex + 1] || "", 10);
   if (!Number.isInteger(value) || value < 0 || value > 65535) {
@@ -1148,6 +1165,55 @@ async function renderMarkdown(markdown) {
   return md.renderer.render(tokens, md.options, env);
 }
 
+async function listMarkdownFiles(contentRoot, currentDir = contentRoot) {
+  const entries = await fsp.readdir(currentDir, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) {
+      continue;
+    }
+
+    const entryPath = path.join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await listMarkdownFiles(contentRoot, entryPath));
+      continue;
+    }
+
+    if (entry.isFile() && path.extname(entry.name).toLowerCase() === ".md") {
+      const relativePath = path.relative(contentRoot, entryPath).split(path.sep).join("/");
+      files.push({
+        relativePath,
+        title: path.parse(entry.name).name,
+        filePath: entryPath,
+      });
+    }
+  }
+
+  return files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
+
+function renderOfficialLinks() {
+  return OFFICIAL_LINKS
+    .map(([label, href]) => `<a href="${escapeAttribute(href)}" target="_blank" rel="noreferrer noopener">${escapeHtml(label)}</a>`)
+    .join("");
+}
+
+function renderArticleNav(articles, selectedPath) {
+  if (articles.length === 0) {
+    return '<p class="article-nav__empty">No markdown files in public.</p>';
+  }
+
+  return `<ol class="article-nav__list">
+${articles
+  .map((article) => {
+    const active = article.relativePath === selectedPath ? " article-nav__link--active" : "";
+    return `<li><a class="article-nav__link${active}" href="/?file=${encodeURIComponent(article.relativePath)}"><span>${escapeHtml(article.title)}</span><small>${escapeHtml(article.relativePath)}</small></a></li>`;
+  })
+  .join("\n")}
+</ol>`;
+}
+
 async function loadHighlightCss() {
   if (!highlightCssPromise) {
     highlightCssPromise = fsp.readFile(HIGHLIGHT_THEME_FILE, "utf8");
@@ -1210,7 +1276,15 @@ function buildFontCss(embedFonts) {
 `;
 }
 
-function createHtmlDocument({ title, body, highlightCss, embedFonts }) {
+function createHtmlDocument({
+  title,
+  body,
+  highlightCss,
+  embedFonts,
+  articles = [],
+  selectedPath = "",
+  contentRoot = "",
+}) {
   const fontCss = buildFontCss(embedFonts);
   const fontFamily = embedFonts
     ? '"Docs Latin", "Docs Sans JP", "Segoe UI", "Yu Gothic UI", system-ui, sans-serif'
@@ -1251,18 +1325,128 @@ ${highlightCss}
       body {
         margin: 0;
         color: var(--fg);
-        background:
-          radial-gradient(circle at top, #f4f8ff 0, #ffffff 28rem),
-          var(--bg);
+        background: #f6f8fa;
         line-height: 1.7;
         font-family: ${fontFamily};
         font-synthesis: none;
       }
 
-      main {
+      .app-header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        min-height: 56px;
+        padding: 0 20px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.96);
+      }
+
+      .app-header__brand {
+        display: flex;
+        flex-direction: column;
+        gap: 0.05rem;
+        min-width: 0;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+
+      .app-header__brand small {
+        color: var(--muted);
+        font-weight: 400;
+      }
+
+      .app-header__links {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        white-space: nowrap;
+      }
+
+      .app-shell {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        min-height: calc(100vh - 56px);
+      }
+
+      .article-nav {
+        position: sticky;
+        top: 56px;
+        align-self: start;
+        height: calc(100vh - 56px);
+        overflow: auto;
+        border-right: 1px solid var(--border);
+        background: #fff;
+      }
+
+      .article-nav__header {
+        padding: 16px 16px 10px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .article-nav__header strong {
+        color: var(--fg);
+      }
+
+      .article-nav__header small {
+        display: block;
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+
+      .article-nav__list {
+        list-style: none;
+        margin: 0;
+        padding: 8px;
+      }
+
+      .article-nav__link {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        padding: 0.55rem 0.65rem;
+        border-radius: 6px;
+        color: var(--fg);
+        text-decoration: none;
+      }
+
+      .article-nav__link:hover,
+      .article-nav__link--active {
+        background: #eef2f6;
+      }
+
+      .article-nav__link small,
+      .article-nav__empty {
+        color: var(--muted);
+      }
+
+      .article-nav__empty {
+        padding: 16px;
+      }
+
+      .preview-pane {
+        min-width: 0;
+        padding: 32px 24px 80px;
+      }
+
+      .preview-meta {
+        max-width: 980px;
+        margin: 0 auto 16px;
+        color: var(--muted);
+        font-size: 0.9rem;
+        overflow-wrap: anywhere;
+      }
+
+      main.markdown-body {
         max-width: 980px;
         margin: 0 auto;
-        padding: 40px 24px 80px;
+        padding: 32px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #fff;
       }
 
       h1, h2, h3, h4, h5, h6 {
@@ -1561,14 +1745,61 @@ ${highlightCss}
           background: #fff;
         }
 
-        main {
+        .app-header,
+        .article-nav {
+          display: none;
+        }
+
+        .app-shell {
+          display: block;
+        }
+
+        .preview-pane {
+          padding: 0;
+        }
+
+        main.markdown-body {
           max-width: none;
           padding: 0;
+          border: 0;
         }
 
         .action-button,
         .diagram-actions {
           display: none !important;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .app-header {
+          align-items: flex-start;
+          flex-direction: column;
+          padding: 12px 16px;
+        }
+
+        .app-header__links {
+          flex-wrap: wrap;
+          white-space: normal;
+        }
+
+        .app-shell {
+          display: block;
+        }
+
+        .article-nav {
+          position: static;
+          height: auto;
+          max-height: 38vh;
+          border-right: 0;
+          border-bottom: 1px solid var(--border);
+        }
+
+        .preview-pane {
+          padding: 20px 12px 56px;
+        }
+
+        main.markdown-body {
+          padding: 20px;
         }
       }
     </style>
@@ -1731,25 +1962,54 @@ ${highlightCss}
     </script>
   </head>
   <body>
-    <main class="markdown-body">
+    <header class="app-header">
+      <div class="app-header__brand">
+        <span>mathlog-preview</span>
+        <small>local Mathlog article preview</small>
+      </div>
+      <nav class="app-header__links" aria-label="official links">
+        ${renderOfficialLinks()}
+      </nav>
+    </header>
+    <div class="app-shell">
+      <aside class="article-nav">
+        <div class="article-nav__header">
+          <strong>Articles</strong>
+          <small>${escapeHtml(path.relative(DOCS_ROOT, contentRoot) || ".")}</small>
+        </div>
+        ${renderArticleNav(articles, selectedPath)}
+      </aside>
+      <div class="preview-pane">
+        <div class="preview-meta">${selectedPath ? escapeHtml(selectedPath) : "No article selected"}</div>
+        <main class="markdown-body">
 ${body}
-    </main>
+        </main>
+      </div>
+    </div>
   </body>
 </html>
 `;
 }
 
-async function renderHtml(inputFile, { embedFonts = false } = {}) {
-  const markdown = await fsp.readFile(inputFile, "utf8");
+async function renderHtml(contentRoot, selectedPath, { embedFonts = false } = {}) {
+  const articles = await listMarkdownFiles(contentRoot);
+  const selectedArticle =
+    articles.find((article) => article.relativePath === selectedPath) || articles[0] || null;
+  const markdown = selectedArticle
+    ? await fsp.readFile(selectedArticle.filePath, "utf8")
+    : "# No articles\n\nCreate Markdown files under `public/`.";
   const [body, highlightCss] = await Promise.all([
     renderMarkdown(markdown),
     loadHighlightCss(),
   ]);
   return createHtmlDocument({
-    title: path.parse(inputFile).name,
+    title: selectedArticle ? selectedArticle.title : "mathlog-preview",
     body,
     highlightCss,
     embedFonts,
+    articles,
+    selectedPath: selectedArticle?.relativePath || "",
+    contentRoot,
   });
 }
 
@@ -1766,14 +2026,16 @@ function getContentType(filePath) {
   return "application/octet-stream";
 }
 
-async function createServer({ inputFile, embedFonts = false, port = 3030 }) {
+async function createServer({ contentRoot, embedFonts = false, port = 8888 }) {
   const server = http.createServer(async (req, res) => {
     const requestUrl = new URL(req.url || "/", "http://localhost");
     const pathname = requestUrl.pathname;
 
     try {
       if (pathname === "/") {
-        const html = await renderHtml(inputFile, { embedFonts });
+        const html = await renderHtml(contentRoot, requestUrl.searchParams.get("file") || "", {
+          embedFonts,
+        });
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(html);
         return;
@@ -1853,13 +2115,12 @@ async function createServer({ inputFile, embedFonts = false, port = 3030 }) {
 }
 
 async function runServe(args) {
-  if (args.length < 1 || args.length > 3) {
+  if (args.length > 3) {
     throw new Error(usage());
   }
-  const inputFile = resolveInputFile(args[0]);
-  const port = parsePort(args);
-  await ensureInputFile(inputFile);
-  const { server, url } = await createServer({ inputFile, port });
+  const { contentRoot, port } = parseServeArgs(args);
+  await ensureContentRoot(contentRoot);
+  const { server, url } = await createServer({ contentRoot, port });
 
   let closing = false;
   let shortcutBinding;
@@ -1886,14 +2147,14 @@ async function runServe(args) {
   process.on("SIGTERM", handleSignal);
 
   shortcutBinding = bindServeShortcuts({
-    inputFile,
+    inputFile: contentRoot,
     url,
     onQuit: async () => {
       await closeServer();
     },
   });
 
-  printServeSummary({ inputFile, url, interactive: shortcutBinding.interactive });
+  printServeSummary({ contentRoot, url, interactive: shortcutBinding.interactive });
 
   try {
     await new Promise((resolve, reject) => {

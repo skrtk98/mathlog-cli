@@ -13,7 +13,13 @@ npm install
 ローカルプレビュー:
 
 ```bash
-npm run preview -- examples/mathlog-syntax.md --port 3030
+npm run preview
+```
+
+既定では Qiita CLI と同じく `public/` 配下の Markdown を一覧表示します。別ディレクトリを使う場合:
+
+```bash
+npm run preview -- path/to/articles --port 8888
 ```
 
 ## 対応済みの Mathlog 構文
