@@ -398,7 +398,7 @@ test("manages Mathlog macros and packages through the preview API", async () => 
 
     const macrosPage = await fetch(new URL("/macros", server.url)).then((res) => res.text());
     assert.match(macrosPage, /<section class="macro-manager" data-macro-manager>/);
-    assert.match(macrosPage, /標準のマクロの設定/);
+    assert.match(macrosPage, /ユーザーマクロの設定/);
     assert.doesNotMatch(macrosPage, /記号/);
 
     const packageResponse = await fetch(new URL("/api/macro-packages", server.url), {
@@ -454,36 +454,45 @@ test("manages Mathlog macros and packages through the preview API", async () => 
     const afterMacroDelete = await deleteMacroResponse.json();
     assert.equal(afterMacroDelete.macros.length, 0);
 
-    const persisted = JSON.parse(await fsp.readFile(path.join(root, "mathlog.macros.json"), "utf8"));
+    const persisted = JSON.parse(await fsp.readFile(path.join(contentDir, "mathlog.macros.json"), "utf8"));
     assert.deepEqual(persisted, { version: 1, packages: [], macros: [] });
   } finally {
     await server.stop();
   }
 });
 
-test("imports Mathlog user macro preset only when explicitly requested", async () => {
-  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-user-macros-"));
+test("loads project user macros into the Web UI and preview", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-macros-"));
   const contentDir = path.join(root, "public");
   await fsp.mkdir(contentDir, { recursive: true });
   await fsp.writeFile(path.join(contentDir, "macro.md"), "User macro: $\\abs{x}$\n", "utf8");
+  await fsp.writeFile(
+    path.join(contentDir, "mathlog.macros.json"),
+    JSON.stringify(
+      {
+        version: 1,
+        packages: [{ id: "symbols", name: "記号", enabled: true }],
+        macros: [
+          {
+            id: "abs",
+            command: "\\abs",
+            args: 1,
+            body: "\\left| #1 \\right|",
+            packageId: "symbols",
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
 
   const server = await startPreviewServer(contentDir, { cwd: root });
   try {
-    const before = await fetch(server.url).then((res) => res.text());
-    assert.match(before, /macros: \{\}/);
-    assert.doesNotMatch(before, /記号/);
-
-    const importResponse = await fetch(new URL("/api/macros/import-user-preset", server.url), {
-      method: "POST",
-    });
-    assert.equal(importResponse.status, 200);
-    const importedUserPreset = await importResponse.json();
-    assert.equal(importedUserPreset.packages[0].name, "記号");
-    assert.ok(importedUserPreset.macros.some((macro) => macro.command === "\\abs"));
-
-    const after = await fetch(server.url).then((res) => res.text());
-    assert.match(after, /macros: \{"abs":\["\\\\left\| #1 \\\\right\|",1\]/);
-    assert.doesNotMatch(after, /<section class="macro-manager" data-macro-manager>/);
+    const preview = await fetch(server.url).then((res) => res.text());
+    assert.match(preview, /macros: \{"abs":\["\\\\left\| #1 \\\\right\|",1\]/);
+    assert.doesNotMatch(preview, /<section class="macro-manager" data-macro-manager>/);
 
     const macrosPage = await fetch(new URL("/macros", server.url)).then((res) => res.text());
     assert.match(macrosPage, /記号/);

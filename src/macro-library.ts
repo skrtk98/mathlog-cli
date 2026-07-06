@@ -1,7 +1,7 @@
 import fsp from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { USER_MACRO_PRESET_FILE, MACROS_FILE_NAME } from "./paths.js";
+import { MACROS_FILE_NAME } from "./paths.js";
 
 export type MacroPackage = {
   id: string;
@@ -78,13 +78,13 @@ export function normalizeMacroLibrary(raw: any = {}): MacroLibrary {
   return { version: 1, packages, macros };
 }
 
-export function getMacrosFilePath(): string {
-  return path.join(process.cwd(), MACROS_FILE_NAME);
+export function getMacrosFilePath(contentRoot: string): string {
+  return path.join(contentRoot, MACROS_FILE_NAME);
 }
 
-export async function readMacroLibrary(): Promise<MacroLibrary> {
+export async function readMacroLibrary(contentRoot: string): Promise<MacroLibrary> {
   try {
-    const raw = JSON.parse(await fsp.readFile(getMacrosFilePath(), "utf8"));
+    const raw = JSON.parse(await fsp.readFile(getMacrosFilePath(contentRoot), "utf8"));
     return normalizeMacroLibrary(raw);
   } catch (error: any) {
     if (error?.code === "ENOENT") {
@@ -94,46 +94,10 @@ export async function readMacroLibrary(): Promise<MacroLibrary> {
   }
 }
 
-export async function writeMacroLibrary(library: MacroLibrary): Promise<MacroLibrary> {
+export async function writeMacroLibrary(contentRoot: string, library: MacroLibrary): Promise<MacroLibrary> {
   const normalized = normalizeMacroLibrary(library);
-  await fsp.writeFile(getMacrosFilePath(), `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
+  await fsp.writeFile(getMacrosFilePath(contentRoot), `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
   return normalized;
-}
-
-export async function readUserMacroPreset(): Promise<MacroLibrary> {
-  const raw = JSON.parse(await fsp.readFile(USER_MACRO_PRESET_FILE, "utf8"));
-  return normalizeMacroLibrary(raw);
-}
-
-export function mergeMacroLibrary(base: MacroLibrary, imported: MacroLibrary): MacroLibrary {
-  const packages = [...base.packages];
-  for (const pkg of imported.packages) {
-    const existing = packages.find((item) => item.id === pkg.id);
-    if (existing) {
-      existing.name = pkg.name;
-      existing.enabled = pkg.enabled;
-    } else {
-      packages.push({ ...pkg });
-    }
-  }
-
-  const macros = [...base.macros];
-  for (const macro of imported.macros) {
-    const existingIndex = macros.findIndex((item) => item.command === macro.command);
-    if (existingIndex === -1) {
-      macros.push({ ...macro });
-    } else {
-      macros[existingIndex] = {
-        ...macros[existingIndex],
-        command: macro.command,
-        args: macro.args,
-        body: macro.body,
-        packageId: macro.packageId,
-      };
-    }
-  }
-
-  return normalizeMacroLibrary({ version: 1, packages, macros });
 }
 
 export function buildActiveMathJaxMacros(library: MacroLibrary): Record<string, string | [string, number]> {

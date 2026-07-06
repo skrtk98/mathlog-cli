@@ -9,5 +9,4 @@ export const DEFAULT_HOST = "localhost";
 export const DEFAULT_PORT = 3141;
 export const CONFIG_FILE_NAME = "mathlog.config.json";
 export const MACROS_FILE_NAME = "mathlog.macros.json";
-export const USER_MACRO_PRESET_FILE = path.join(DOCS_ROOT, "presets", "mathlog-user-macros.json");
 export const MATHJAX_DIST_DIR = path.join(DOCS_ROOT, "node_modules", "mathjax-full", "es5");

@@ -102,7 +102,6 @@ export function renderMacroManager(library: MacroLibrary): string {
               <input name="name" type="text" placeholder="パッケージ名">
               <button class="action-button" type="submit">パッケージ追加</button>
             </form>
-            <button class="action-button" type="button" data-macro-import-user-preset>ユーザーマクロ例を読み込む</button>
           </div>
           <div class="macro-panel">
             <div class="macro-panel__title">

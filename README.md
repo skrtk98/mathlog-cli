@@ -111,7 +111,7 @@ npx github:skrtk98/mathlog-cli new my-article
 
 パッケージは追加、削除、有効化、無効化できます。無効化したパッケージに属するマクロは MathJax に渡されないため、プレビュー上でも無効になります。パッケージを削除すると、そのパッケージに属していたマクロは「指定なし」に戻ります。
 
-登録内容はプロジェクト直下の `mathlog.macros.json` に保存されます。clone 直後のデフォルトマクロは空です。スクショ由来のマクロ例は `presets/mathlog-user-macros.json` にあり、`/macros` の「ユーザーマクロ例を読み込む」から明示的に取り込めます。
+登録内容は記事置き場直下の `mathlog.macros.json` に保存されます。既定では `public/mathlog.macros.json` です。アプリ側に組み込みのデフォルトマクロはありません。このリポジトリでは、スクショ由来のマクロをユーザーマクロとして `public/mathlog.macros.json` に配置しています。
 
 ## 対応している Mathlog 構文
 
@@ -138,12 +138,11 @@ npx github:skrtk98/mathlog-cli new my-article
 ```text
 .
 ├── public/                 # ローカル記事置き場
-├── presets/                # 明示的に読み込めるマクロプリセット
+│   └── mathlog.macros.json # ユーザーマクロ設定
 ├── bin/
 │   └── mathlog.mjs         # npm bin 用の CLI エントリ
 ├── src/                    # TypeScript の実装とテスト
 ├── mathlog.config.json     # npm run init で作成
-├── mathlog.macros.json     # マクロ登録時に作成
 └── README.md
 ```
 

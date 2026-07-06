@@ -5,6 +5,7 @@ tsconfig.tsbuildinfo
 exports/
 public/*
 !public/.gitkeep
+!public/mathlog.macros.json
 src/sample_data/
 *.pdf
 *.log

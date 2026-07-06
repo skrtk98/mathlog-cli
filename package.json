@@ -29,8 +29,8 @@
     "dist/",
     "!dist/**/*.test.*",
     "bin/mathlog.mjs",
-    "presets/",
     "public/.gitkeep",
+    "public/mathlog.macros.json",
     "src/templates/"
   ],
   "scripts": {

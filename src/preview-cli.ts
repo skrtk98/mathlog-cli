@@ -8,12 +8,10 @@ import { tex2svgHtml } from "mathxyjax3";
 import {
   buildActiveMathJaxMacros,
   createId,
-  mergeMacroLibrary,
   normalizeMacroArgs,
   normalizeMacroCommand,
   normalizeMacroLibrary,
   normalizeMacroPackageId,
-  readUserMacroPreset,
   readMacroLibrary,
   writeMacroLibrary,
 } from "./macro-library.js";
@@ -1325,7 +1323,7 @@ async function loadHighlightCss() {
 
 async function renderHtml(contentRoot, selectedPath) {
   const articles = await listMarkdownFiles(contentRoot);
-  const macroLibrary = await readMacroLibrary();
+  const macroLibrary = await readMacroLibrary(contentRoot);
   const selectedArticle =
     articles.find((article) => article.relativePath === selectedPath) || articles[0] || null;
   const article = selectedArticle
@@ -1350,11 +1348,11 @@ async function renderHtml(contentRoot, selectedPath) {
 
 async function renderMacrosHtml(contentRoot) {
   const [macroLibrary, highlightCss] = await Promise.all([
-    readMacroLibrary(),
+    readMacroLibrary(contentRoot),
     loadHighlightCss(),
   ]);
   return await createHtmlDocument({
-    title: "標準のマクロの設定",
+    title: "ユーザーマクロの設定",
     body: "",
     highlightCss,
     articles: [],
@@ -1421,24 +1419,15 @@ async function createServer({ contentRoot, host = DEFAULT_HOST, port = DEFAULT_P
       }
 
       if (pathname === "/api/macros" && req.method === "GET") {
-        const library = await readMacroLibrary();
+        const library = await readMacroLibrary(contentRoot);
         res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(library));
         return;
       }
 
-      if (pathname === "/api/macros/import-user-preset" && req.method === "POST") {
-        const library = await readMacroLibrary();
-        const preset = await readUserMacroPreset();
-        const saved = await writeMacroLibrary(mergeMacroLibrary(library, preset));
-        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify(saved));
-        return;
-      }
-
       if (pathname === "/api/macros" && req.method === "POST") {
         const payload = await readJsonBody(req);
-        const library = await readMacroLibrary();
+        const library = await readMacroLibrary(contentRoot);
         const macro = {
           id: createId("macro"),
           command: normalizeMacroCommand(payload.command),
@@ -1454,7 +1443,7 @@ async function createServer({ contentRoot, host = DEFAULT_HOST, port = DEFAULT_P
         }
         library.macros = library.macros.filter((item) => item.command !== macro.command);
         library.macros.push(macro);
-        const saved = await writeMacroLibrary(library);
+        const saved = await writeMacroLibrary(contentRoot, library);
         res.writeHead(201, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(saved));
         return;
@@ -1463,7 +1452,7 @@ async function createServer({ contentRoot, host = DEFAULT_HOST, port = DEFAULT_P
       const macroMatch = pathname.match(/^\/api\/macros\/([^/]+)$/);
       if (macroMatch && (req.method === "PATCH" || req.method === "DELETE")) {
         const id = decodeURIComponent(macroMatch[1]);
-        const library = await readMacroLibrary();
+        const library = await readMacroLibrary(contentRoot);
         const index = library.macros.findIndex((macro) => macro.id === id);
         if (index === -1) {
           res.writeHead(404, { "content-type": "application/json; charset=utf-8" });
@@ -1489,7 +1478,7 @@ async function createServer({ contentRoot, host = DEFAULT_HOST, port = DEFAULT_P
           }
           library.macros[index] = next;
         }
-        const saved = await writeMacroLibrary(library);
+        const saved = await writeMacroLibrary(contentRoot, library);
         res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(saved));
         return;
@@ -1501,9 +1490,9 @@ async function createServer({ contentRoot, host = DEFAULT_HOST, port = DEFAULT_P
         if (!name) {
           throw new Error("Package name is required.");
         }
-        const library = await readMacroLibrary();
+        const library = await readMacroLibrary(contentRoot);
         library.packages.push({ id: createId("pkg"), name, enabled: true });
-        const saved = await writeMacroLibrary(library);
+        const saved = await writeMacroLibrary(contentRoot, library);
         res.writeHead(201, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(saved));
         return;
@@ -1512,7 +1501,7 @@ async function createServer({ contentRoot, host = DEFAULT_HOST, port = DEFAULT_P
       const packageMatch = pathname.match(/^\/api\/macro-packages\/([^/]+)$/);
       if (packageMatch && (req.method === "PATCH" || req.method === "DELETE")) {
         const id = decodeURIComponent(packageMatch[1]);
-        const library = await readMacroLibrary();
+        const library = await readMacroLibrary(contentRoot);
         const index = library.packages.findIndex((pkg) => pkg.id === id);
         if (index === -1) {
           res.writeHead(404, { "content-type": "application/json; charset=utf-8" });
@@ -1539,7 +1528,7 @@ async function createServer({ contentRoot, host = DEFAULT_HOST, port = DEFAULT_P
             library.packages[index].enabled = Boolean(payload.enabled);
           }
         }
-        const saved = await writeMacroLibrary(library);
+        const saved = await writeMacroLibrary(contentRoot, library);
         res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(saved));
         return;
