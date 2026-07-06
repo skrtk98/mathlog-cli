@@ -74,13 +74,12 @@ npm run new -- my-article
 npm test
 ```
 
-ローカル bin として直接実行する場合は次の形式です。
+GitHub から一回だけ実行する場合は、次の形式も使えます。
 
 ```bash
-npm exec -- mathlog init
-npm exec -- mathlog preview
-npm exec -- mathlog new my-article
-npm exec -- mathlog version
+npx github:skrtk98/mathlog-cli version
+npx github:skrtk98/mathlog-cli preview
+npx github:skrtk98/mathlog-cli new my-article
 ```
 
 ## プレビュー画面
@@ -89,7 +88,7 @@ npm exec -- mathlog version
 - Markdown や画像を保存すると、ブラウザ側が自動で再読み込みします。
 - 画面上部に Mathlog 公式サイトと公式リファレンスへのリンクを表示します。
 - 空のディレクトリでも起動できます。その場合は「新規記事作成」から記事を作れます。
-- 左側の「マクロ」欄から Mathlog 互換のマクロとパッケージを管理できます。
+- ヘッダーの「マクロ設定」から、Mathlog 互換のマクロとパッケージを別タブで管理できます。
 - PDF 出力機能はありません。
 
 起動中の端末では次のショートカットが使えます。
@@ -101,7 +100,7 @@ npm exec -- mathlog version
 
 ## マクロライブラリ
 
-プレビュー画面の「マクロ」欄では、Mathlog の標準マクロ設定に近い形で TeX マクロを登録できます。
+プレビュー画面のヘッダーにある「マクロ設定」を押すと、`/macros` が新規タブで開きます。この画面では、Mathlog の標準マクロ設定に近い形で TeX マクロを登録できます。
 
 マクロには次の項目を設定します。
 
@@ -112,7 +111,7 @@ npm exec -- mathlog version
 
 パッケージは追加、削除、有効化、無効化できます。無効化したパッケージに属するマクロは MathJax に渡されないため、プレビュー上でも無効になります。パッケージを削除すると、そのパッケージに属していたマクロは「指定なし」に戻ります。
 
-登録内容はプロジェクト直下の `mathlog.macros.json` に保存されます。チームや複数環境で同じマクロを使いたい場合は、このファイルを共有してください。
+登録内容はプロジェクト直下の `mathlog.macros.json` に保存されます。clone 直後のデフォルトマクロは空です。スクショ由来の標準マクロは `presets/mathlog-default-macros.json` にあり、`/macros` の「スクショの標準マクロを読み込む」から明示的に取り込めます。
 
 ## 対応している Mathlog 構文
 
@@ -139,9 +138,10 @@ npm exec -- mathlog version
 ```text
 .
 ├── public/                 # ローカル記事置き場
+├── presets/                # 明示的に読み込めるマクロプリセット
 ├── scripts/
-│   └── mathlog-preview.mjs # CLI 本体
-├── test/                   # 自動テスト
+│   └── mathlog-preview.mjs # dist/main.js を呼ぶ互換 shim
+├── src/                    # TypeScript の実装とテスト
 ├── mathlog.config.json     # npm run init で作成
 ├── mathlog.macros.json     # マクロ登録時に作成
 └── README.md
@@ -149,7 +149,7 @@ npm exec -- mathlog version
 
 `public/` 内の記事や画像は利用者の作業ファイルです。このリポジトリでは `public/.gitkeep` だけを管理し、記事ファイルは `.gitignore` しています。
 
-`test/sample_data/` は手元で実記事サンプルを使って検証するための任意ディレクトリです。リポジトリには含めません。存在する場合のみ、`npm test` の追加検証で使われます。
+`src/sample_data/` は手元で実記事サンプルを使って検証するための任意ディレクトリです。リポジトリには含めません。存在する場合のみ、`npm test` の追加検証で使われます。
 
 ## 開発
 
@@ -161,5 +161,5 @@ npm test
 構文エラーだけを確認する場合:
 
 ```bash
-node --check scripts/mathlog-preview.mjs
+npm run build
 ```

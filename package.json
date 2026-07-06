@@ -9,12 +9,22 @@
   "bin": {
     "mathlog": "./scripts/mathlog-preview.mjs"
   },
+  "files": [
+    "dist/",
+    "!dist/**/*.test.*",
+    "presets/",
+    "public/.gitkeep",
+    "scripts/mathlog-preview.mjs",
+    "src/templates/"
+  ],
   "scripts": {
-    "init": "node ./scripts/mathlog-preview.mjs init",
-    "preview": "node ./scripts/mathlog-preview.mjs serve",
-    "new": "node ./scripts/mathlog-preview.mjs new",
-    "serve": "node ./scripts/mathlog-preview.mjs serve",
-    "test": "node --test"
+    "build": "tsc --build",
+    "init": "npm run build --silent && node ./dist/main.js init",
+    "preview": "npm run build --silent && node ./dist/main.js serve",
+    "new": "npm run build --silent && node ./dist/main.js new",
+    "serve": "npm run build --silent && node ./dist/main.js serve",
+    "prepare": "npm run build --silent",
+    "test": "npm run build --silent && node --test \"dist/**/*.test.js\""
   },
   "dependencies": {
     "highlight.js": "^11.11.1",
@@ -23,5 +33,9 @@
     "markdown-it-multimd-table": "^4.2.3",
     "mathjax-full": "^3.2.2",
     "mathxyjax3": "^0.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^5.9.3"
   }
 }

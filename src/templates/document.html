@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{title}}</title>
+    <style>
+{{highlightCss}}
+{{appCss}}
+    </style>
+    <script>
+      window.MathJax = {
+        tex: {
+          inlineMath: [["\\(", "\\)"]],
+          displayMath: [["\\[", "\\]"]],
+          processEscapes: true,
+          tags: "ams",
+          macros: {{mathJaxMacros}}
+        },
+        svg: {
+          fontCache: "global"
+        },
+        startup: {
+          typeset: false
+        }
+      };
+    </script>
+    <script src="/vendor/mathjax/tex-svg-full.js"></script>
+    <script type="module">
+{{clientScript}}
+    </script>
+  </head>
+  <body>
+{{body}}
+  </body>
+</html>

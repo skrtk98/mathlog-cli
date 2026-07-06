@@ -5,8 +5,9 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import type { ChildProcess } from "node:child_process";
 
-const SCRIPT_FILE = path.resolve("scripts/mathlog-preview.mjs");
+const SCRIPT_FILE = path.resolve("dist/main.js");
 
 async function createRepresentativeContentDir(prefix = "mathlog-representative-") {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -118,7 +119,21 @@ async function createRepresentativeContentDir(prefix = "mathlog-representative-"
   return contentDir;
 }
 
-async function startPreviewServer(contentDir, options = {}) {
+type PreviewServer = {
+  child: ChildProcess;
+  url: string;
+  getStdout(): string;
+  writeInput(input: string): void;
+  stop(): Promise<void>;
+};
+
+type PreviewServerOptions = {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  stdin?: "ignore" | "pipe";
+};
+
+async function startPreviewServer(contentDir?: string, options: PreviewServerOptions = {}): Promise<PreviewServer> {
   const args = [SCRIPT_FILE, "serve"];
   if (contentDir) {
     args.push(contentDir);
@@ -375,15 +390,26 @@ test("manages Mathlog macros and packages through the preview API", async () => 
 
   const server = await startPreviewServer(contentDir, { cwd: root });
   try {
+    const emptyHtml = await fetch(server.url).then((res) => res.text());
+    assert.match(emptyHtml, /href="\/macros" target="_blank"[^>]*>マクロ設定<\/a>/);
+    assert.doesNotMatch(emptyHtml, /<section class="macro-manager" data-macro-manager>/);
+    assert.doesNotMatch(emptyHtml, /記号/);
+    assert.match(emptyHtml, /macros: \{\}/);
+
+    const macrosPage = await fetch(new URL("/macros", server.url)).then((res) => res.text());
+    assert.match(macrosPage, /<section class="macro-manager" data-macro-manager>/);
+    assert.match(macrosPage, /標準のマクロの設定/);
+    assert.doesNotMatch(macrosPage, /記号/);
+
     const packageResponse = await fetch(new URL("/api/macro-packages", server.url), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "記号" }),
+      body: JSON.stringify({ name: "local" }),
     });
     assert.equal(packageResponse.status, 201);
     const withPackage = await packageResponse.json();
-    assert.equal(withPackage.packages[0].name, "記号");
-    assert.equal(withPackage.packages[0].enabled, true);
+    const localPackage = withPackage.packages.find((item) => item.name === "local");
+    assert.equal(localPackage.enabled, true);
 
     const macroResponse = await fetch(new URL("/api/macros", server.url), {
       method: "POST",
@@ -392,19 +418,19 @@ test("manages Mathlog macros and packages through the preview API", async () => 
         command: "\\abs",
         args: 1,
         body: "\\left| #1 \\right|",
-        packageId: withPackage.packages[0].id,
+        packageId: localPackage.id,
       }),
     });
     assert.equal(macroResponse.status, 201);
     const withMacro = await macroResponse.json();
-    assert.equal(withMacro.macros[0].command, "\\abs");
-    assert.equal(withMacro.macros[0].args, 1);
+    const localMacro = withMacro.macros.find((item) => item.command === "\\abs");
+    assert.equal(localMacro.args, 1);
 
     const html = await fetch(server.url).then((res) => res.text());
-    assert.match(html, /<section class="macro-manager" data-macro-manager>/);
+    assert.doesNotMatch(html, /<section class="macro-manager" data-macro-manager>/);
     assert.match(html, /macros: \{"abs":\["\\\\left\| #1 \\\\right\|",1\]\}/);
 
-    const disableResponse = await fetch(new URL(`/api/macro-packages/${encodeURIComponent(withPackage.packages[0].id)}`, server.url), {
+    const disableResponse = await fetch(new URL(`/api/macro-packages/${encodeURIComponent(localPackage.id)}`, server.url), {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ enabled: false }),
@@ -413,7 +439,7 @@ test("manages Mathlog macros and packages through the preview API", async () => 
     const disabledHtml = await fetch(server.url).then((res) => res.text());
     assert.match(disabledHtml, /macros: \{\}/);
 
-    const deletePackageResponse = await fetch(new URL(`/api/macro-packages/${encodeURIComponent(withPackage.packages[0].id)}`, server.url), {
+    const deletePackageResponse = await fetch(new URL(`/api/macro-packages/${encodeURIComponent(localPackage.id)}`, server.url), {
       method: "DELETE",
     });
     assert.equal(deletePackageResponse.status, 200);
@@ -421,7 +447,7 @@ test("manages Mathlog macros and packages through the preview API", async () => 
     assert.equal(afterPackageDelete.packages.length, 0);
     assert.equal(afterPackageDelete.macros[0].packageId, "");
 
-    const deleteMacroResponse = await fetch(new URL(`/api/macros/${encodeURIComponent(withMacro.macros[0].id)}`, server.url), {
+    const deleteMacroResponse = await fetch(new URL(`/api/macros/${encodeURIComponent(localMacro.id)}`, server.url), {
       method: "DELETE",
     });
     assert.equal(deleteMacroResponse.status, 200);
@@ -430,6 +456,38 @@ test("manages Mathlog macros and packages through the preview API", async () => 
 
     const persisted = JSON.parse(await fsp.readFile(path.join(root, "mathlog.macros.json"), "utf8"));
     assert.deepEqual(persisted, { version: 1, packages: [], macros: [] });
+  } finally {
+    await server.stop();
+  }
+});
+
+test("imports Mathlog default macro preset only when explicitly requested", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-default-macros-"));
+  const contentDir = path.join(root, "public");
+  await fsp.mkdir(contentDir, { recursive: true });
+  await fsp.writeFile(path.join(contentDir, "macro.md"), "Default macro: $\\abs{x}$\n", "utf8");
+
+  const server = await startPreviewServer(contentDir, { cwd: root });
+  try {
+    const before = await fetch(server.url).then((res) => res.text());
+    assert.match(before, /macros: \{\}/);
+    assert.doesNotMatch(before, /記号/);
+
+    const importResponse = await fetch(new URL("/api/macros/import-defaults", server.url), {
+      method: "POST",
+    });
+    assert.equal(importResponse.status, 200);
+    const importedDefaults = await importResponse.json();
+    assert.equal(importedDefaults.packages[0].name, "記号");
+    assert.ok(importedDefaults.macros.some((macro) => macro.command === "\\abs"));
+
+    const after = await fetch(server.url).then((res) => res.text());
+    assert.match(after, /macros: \{"abs":\["\\\\left\| #1 \\\\right\|",1\]/);
+    assert.doesNotMatch(after, /<section class="macro-manager" data-macro-manager>/);
+
+    const macrosPage = await fetch(new URL("/macros", server.url)).then((res) => res.text());
+    assert.match(macrosPage, /記号/);
+    assert.match(macrosPage, /\\abs/);
   } finally {
     await server.stop();
   }
@@ -585,11 +643,11 @@ test("reports content state changes for auto reload", async () => {
 });
 
 test("renders real Mathlog sample articles without visible raw syntax", async (context) => {
-  const contentDir = path.resolve("test/sample_data");
+  const contentDir = path.resolve("src/sample_data");
   try {
     await fsp.access(contentDir);
   } catch {
-    context.skip("test/sample_data is not available");
+    context.skip("src/sample_data is not available");
     return;
   }
 

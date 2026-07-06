@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "packages": [
+    {
+      "id": "symbols",
+      "name": "記号",
+      "enabled": true
+    }
+  ],
+  "macros": [
+    {
+      "id": "abs",
+      "command": "\\abs",
+      "args": 1,
+      "body": "\\left| #1 \\right|",
+      "packageId": "symbols"
+    },
+    {
+      "id": "primes",
+      "command": "\\primes",
+      "args": 0,
+      "body": "\\mathbb{P}",
+      "packageId": "symbols"
+    },
+    {
+      "id": "naturals",
+      "command": "\\naturals",
+      "args": 0,
+      "body": "\\mathbb{N}",
+      "packageId": "symbols"
+    },
+    {
+      "id": "integers",
+      "command": "\\integers",
+      "args": 0,
+      "body": "\\mathbb{Z}",
+      "packageId": "symbols"
+    },
+    {
+      "id": "rationals",
+      "command": "\\rationals",
+      "args": 0,
+      "body": "\\mathbb{Q}",
+      "packageId": "symbols"
+    },
+    {
+      "id": "reals",
+      "command": "\\reals",
+      "args": 0,
+      "body": "\\mathbb{R}",
+      "packageId": "symbols"
+    },
+    {
+      "id": "comp",
+      "command": "\\comp",
+      "args": 0,
+      "body": "\\mathbb{C}",
+      "packageId": "symbols"
+    },
+    {
+      "id": "relmiddle",
+      "command": "\\relmiddle",
+      "args": 1,
+      "body": "\\mathrel{}\\middle #1 \\mathrel{}",
+      "packageId": "symbols"
+    },
+    {
+      "id": "identity",
+      "command": "\\identity",
+      "args": 1,
+      "body": "\\boldsymbol{1}_{#1}",
+      "packageId": "symbols"
+    },
+    {
+      "id": "norm",
+      "command": "\\norm",
+      "args": 1,
+      "body": "{\\left\\| #1 \\right\\|}",
+      "packageId": "symbols"
+    },
+    {
+      "id": "braket",
+      "command": "\\braket",
+      "args": 1,
+      "body": "{\\langle #1 \\rangle}",
+      "packageId": "symbols"
+    },
+    {
+      "id": "Braket",
+      "command": "\\Braket",
+      "args": 1,
+      "body": "{\\left\\langle #1 \\right\\rangle}",
+      "packageId": "symbols"
+    }
+  ]
+}
