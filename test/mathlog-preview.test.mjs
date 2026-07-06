@@ -198,6 +198,35 @@ test("creates an article from the preview API", async () => {
   }
 });
 
+test("parses CRLF front matter with inline tags", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-front-matter-"));
+  const contentDir = path.join(root, "public");
+  await fsp.mkdir(contentDir, { recursive: true });
+  await fsp.writeFile(
+    path.join(contentDir, "meta.md"),
+    [
+      "---",
+      'title: "CRLF meta"',
+      "tags: [math, topology]",
+      "private: true",
+      "---",
+      "# body",
+      "",
+    ].join("\r\n"),
+    "utf8",
+  );
+
+  const server = await startPreviewServer(contentDir);
+  try {
+    const html = await fetch(server.url).then((res) => res.text());
+    assert.match(html, /<span>CRLF meta<span class="article-nav__badge">private<\/span><\/span><small>meta.md<\/small>/);
+    assert.match(html, /<div class="preview-meta">meta.md <span class="preview-meta__badge">private<\/span> <span class="preview-meta__badge">math<\/span> <span class="preview-meta__badge">topology<\/span><\/div>/);
+    assert.doesNotMatch(html, /title: &quot;CRLF meta&quot;/);
+  } finally {
+    await server.stop();
+  }
+});
+
 test("renders an empty project without a hard-coded public directory message", async () => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-empty-"));
   const contentDir = path.join(root, "articles");

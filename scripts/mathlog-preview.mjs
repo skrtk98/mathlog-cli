@@ -1200,19 +1200,15 @@ async function renderMarkdown(markdown, { currentDir = "" } = {}) {
 }
 
 function parseFrontMatter(markdown) {
-  if (!markdown.startsWith("---\n")) {
+  const frontMatterMatch = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!frontMatterMatch) {
     return { markdown, meta: {} };
   }
 
-  const endIndex = markdown.indexOf("\n---", 4);
-  if (endIndex === -1) {
-    return { markdown, meta: {} };
-  }
-
-  const raw = markdown.slice(4, endIndex).trim();
-  const body = markdown.slice(endIndex).replace(/^\n---\s*\n?/, "");
+  const raw = frontMatterMatch[1].trim();
+  const body = markdown.slice(frontMatterMatch[0].length);
   const meta = {};
-  const lines = raw.split("\n");
+  const lines = raw.split(/\r?\n/);
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
@@ -1234,6 +1230,12 @@ function parseFrontMatter(markdown) {
         index = next;
       }
       meta[key] = values;
+    } else if (/^\[.*\]$/.test(value)) {
+      meta[key] = value
+        .slice(1, -1)
+        .split(",")
+        .map((item) => item.trim().replace(/^["']|["']$/g, ""))
+        .filter(Boolean);
     } else if (value === "true" || value === "false") {
       meta[key] = value === "true";
     } else {
