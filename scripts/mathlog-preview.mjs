@@ -611,20 +611,24 @@ function parseMathAlignment(content) {
   if (!match) {
     const lines = content.split("\n");
     for (let index = 0; index < lines.length; index += 1) {
-      const lineMatch = lines[index].match(/^\s*\\Text(Center|Right|Left)\b\s*/);
+      const lineMatch =
+        lines[index].match(/^\s*\\Text(Center|Right|Left)\b\s*/) ||
+        lines[index].match(/^(\s*\\begin\{[^}]+\})\s*\\Text(Center|Right|Left)\b\s*/);
       if (!lineMatch) {
         continue;
       }
 
       const nextLines = [...lines];
-      const remainingLine = lines[index].slice(lineMatch[0].length);
+      const beginPrefix = lineMatch[2] ? lineMatch[1] : "";
+      const align = lineMatch[2] || lineMatch[1];
+      const remainingLine = `${beginPrefix}${lines[index].slice(lineMatch[0].length)}`;
       if (remainingLine.trim().length === 0) {
         nextLines.splice(index, 1);
       } else {
         nextLines[index] = remainingLine;
       }
       return {
-        align: lineMatch[1].toLowerCase(),
+        align: align.toLowerCase(),
         content: nextLines.join("\n").trim(),
       };
     }

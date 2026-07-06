@@ -276,8 +276,7 @@ test("applies Mathlog alignment commands inside begin environments", async () =>
     [
       "# align",
       "",
-      "\\begin{eqnarray}",
-      "\\TextRight",
+      "\\begin{eqnarray}\\TextRight",
       "f(x)",
       "&=& x^2 - 1",
       "\\end{eqnarray}",
