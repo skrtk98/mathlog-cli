@@ -1,8 +1,23 @@
 {
   "name": "mathlog-cli",
   "version": "0.1.0",
-  "private": true,
+  "description": "Local preview CLI for Mathlog Markdown articles.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skrtk98/mathlog-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/skrtk98/mathlog-cli/issues"
+  },
+  "homepage": "https://github.com/skrtk98/mathlog-cli#readme",
+  "keywords": [
+    "mathlog",
+    "markdown",
+    "preview",
+    "cli",
+    "mathjax"
+  ],
   "engines": {
     "node": ">=20"
   },
