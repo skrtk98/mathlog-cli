@@ -71,13 +71,6 @@ function printServeSummary({ contentRoot, url, interactive }) {
   }
 }
 
-function ensureDocsPath(filePath) {
-  const relativePath = path.relative(DOCS_ROOT, filePath);
-  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-    throw new Error(`Path must be inside ${DOCS_ROOT}: ${filePath}`);
-  }
-}
-
 function ensureInsidePath(parentPath, childPath) {
   const relativePath = path.relative(parentPath, childPath);
   if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
