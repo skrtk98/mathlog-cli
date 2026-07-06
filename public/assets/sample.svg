@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="240" height="80" viewBox="0 0 240 80" role="img" aria-label="sample">
-  <rect width="240" height="80" rx="8" fill="#f6f8fa"/>
-  <path d="M24 56 L64 24 L104 56 L144 24 L184 56 L216 32" fill="none" stroke="#1f883d" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="24" y="22" font-family="sans-serif" font-size="14" fill="#57606a">Mathlog preview asset</text>
-</svg>

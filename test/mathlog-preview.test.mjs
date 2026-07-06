@@ -8,6 +8,116 @@ import test from "node:test";
 
 const SCRIPT_FILE = path.resolve("scripts/mathlog-preview.mjs");
 
+async function createRepresentativeContentDir(prefix = "mathlog-representative-") {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), prefix));
+  const contentDir = path.join(root, "public");
+  await fsp.mkdir(path.join(contentDir, "assets"), { recursive: true });
+  await fsp.writeFile(
+    path.join(contentDir, "mathlog-syntax.md"),
+    [
+      "---",
+      "title: Mathlog syntax preview",
+      "tags:",
+      "  - syntax",
+      "private: false",
+      "---",
+      "",
+      "# Mathlog syntax preview",
+      "",
+      "## ラベル付き見出し [heading-label]",
+      "",
+      "[この見出しへのリンク](#heading-label)",
+      "",
+      "ここで、$x_i>0$ かつ $a \\ne 0$ とします。",
+      "",
+      "**太字赤色**、*斜体*、***斜体太字赤色***、~~取り消し~~。",
+      "",
+      '<span class="fw-bold">赤字にしない太字</span>',
+      "",
+      '<div class="box p-4"><blockquote>HTML内の引用</blockquote></div>',
+      "",
+      "![dummy image](https://example.com/image.png =500)",
+      "",
+      "![local svg](assets/sample.svg =240)",
+      "",
+      "[関連ページ](related.md)",
+      "",
+      "https://mathlog.info/",
+      "",
+      "(1) 丸括弧の番号あり",
+      "\t- 下位項目1",
+      "\t- 下位項目2",
+      "(2) 2つ目",
+      "",
+      "$$",
+      "\\TextCenter",
+      "\\sin(\\alpha+\\beta) = \\sin(\\alpha)\\cos(\\beta)+\\cos(\\alpha)\\sin(\\beta)",
+      "$$",
+      "",
+      "\\begin{eqnarray}",
+      "f(x)",
+      "&=& x^2 - 1 \\\\",
+      "&=& (x-1)(x+1)",
+      "\\end{eqnarray}",
+      "",
+      "\\begin{xy}",
+      "\\xymatrix{A \\ar[r]^f & B}",
+      "\\end{xy}",
+      "",
+      "&&&def 三角関数 [trig-def]",
+      "三角関数は角に対して定まる関数です。",
+      "",
+      "- $\\sin x$",
+      "- $\\cos x$",
+      "&&&",
+      "",
+      "&&&thm 加法定理 [addition-theorem]",
+      "任意の実数 $\\alpha,\\beta$ について、[[trig-def]] の記法を使うと次が成り立ちます。",
+      "",
+      "$$",
+      "\\sin(\\alpha+\\beta) = \\sin\\alpha\\cos\\beta+\\cos\\alpha\\sin\\beta",
+      "$$",
+      "&&&",
+      "",
+      "&&&prf",
+      "[[addition-theorem]] は単位円上の回転から従います。",
+      "&&&",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  await fsp.writeFile(
+    path.join(contentDir, "related.md"),
+    [
+      "---",
+      "title: 関連ページ",
+      "tags:",
+      "  - example",
+      "private: false",
+      "---",
+      "",
+      "# 関連ページ",
+      "",
+      "これは記事間リンクの確認用です。",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  await fsp.writeFile(
+    path.join(contentDir, "assets", "sample.svg"),
+    [
+      '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="80" viewBox="0 0 240 80" role="img" aria-label="sample">',
+      '  <rect width="240" height="80" rx="8" fill="#f6f8fa"/>',
+      '  <path d="M24 56 L64 24 L104 56 L144 24 L184 56 L216 32" fill="none" stroke="#1f883d" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>',
+      '  <text x="24" y="22" font-family="sans-serif" font-size="14" fill="#57606a">Mathlog preview asset</text>',
+      "</svg>",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  return contentDir;
+}
+
 async function startPreviewServer(contentDir) {
   const args = [SCRIPT_FILE, "serve"];
   if (contentDir) {
@@ -77,7 +187,8 @@ test("prints plain preview startup output", async () => {
 });
 
 test("renders representative Mathlog syntax", async () => {
-  const server = await startPreviewServer();
+  const contentDir = await createRepresentativeContentDir();
+  const server = await startPreviewServer(contentDir);
   try {
     const response = await fetch(server.url);
     assert.equal(response.status, 200);
