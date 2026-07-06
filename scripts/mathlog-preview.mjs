@@ -32,6 +32,9 @@ const MERMAID_DIST_DIR = path.join(DOCS_ROOT, "node_modules", "mermaid", "dist")
 const MATHJAX_DIST_DIR = path.join(DOCS_ROOT, "node_modules", "mathjax-full", "es5");
 const DOT_LANGUAGES = new Set(["dot", "graphviz", "gv"]);
 const DEFAULT_CONTENT_DIR = "public";
+const DEFAULT_HOST = "localhost";
+const DEFAULT_PORT = 8888;
+const CONFIG_FILE_NAME = "mathlog.config.json";
 const OFFICIAL_LINKS = [
   ["Mathlog", "https://mathlog.info/"],
   ["公式リファレンス", "https://opthub.notion.site/1ca318bcf9ac8195ad0af2a1ae8319e0"],
@@ -69,7 +72,7 @@ function usage() {
   return [
     "Usage:",
     "  mathlog init [content-dir]",
-    "  mathlog preview [content-dir] [--port 8888]",
+    "  mathlog preview [content-dir] [--host localhost] [--port 8888]",
     "  mathlog new <basename> [content-dir]",
     "  mathlog version",
   ].join("\n");
@@ -193,10 +196,12 @@ function ensureInsidePath(parentPath, childPath) {
 }
 
 function parseServeArgs(args) {
-  const port = parsePort(args);
+  const config = loadConfig();
+  const port = parsePort(args, config.port);
+  const host = parseHost(args, config.host);
   const positionalArgs = [];
   for (let index = 0; index < args.length; index += 1) {
-    if (args[index] === "--port") {
+    if (args[index] === "--port" || args[index] === "--host") {
       index += 1;
       continue;
     }
@@ -206,9 +211,31 @@ function parseServeArgs(args) {
     throw new Error(usage());
   }
   return {
-    contentRoot: path.resolve(process.cwd(), positionalArgs[0] || DEFAULT_CONTENT_DIR),
+    contentRoot: path.resolve(process.cwd(), positionalArgs[0] || config.contentDir || DEFAULT_CONTENT_DIR),
+    host,
     port,
   };
+}
+
+function loadConfig() {
+  try {
+    const config = require(path.join(process.cwd(), CONFIG_FILE_NAME));
+    return typeof config === "object" && config ? config : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseHost(args, configuredHost) {
+  const flagIndex = args.findIndex((arg) => arg === "--host");
+  if (flagIndex === -1) {
+    return configuredHost || DEFAULT_HOST;
+  }
+  const value = args[flagIndex + 1] || "";
+  if (!value) {
+    throw new Error("Invalid --host value.");
+  }
+  return value;
 }
 
 function sanitizeArticleBasename(value) {
@@ -286,6 +313,26 @@ async function createArticleFile(contentRoot, basename) {
 
 async function initializeContentRoot(contentRoot) {
   await fsp.mkdir(contentRoot, { recursive: true });
+  const configFile = path.join(process.cwd(), CONFIG_FILE_NAME);
+  try {
+    await fsp.writeFile(
+      configFile,
+      `${JSON.stringify(
+        {
+          contentDir: path.relative(process.cwd(), contentRoot).split(path.sep).join("/") || ".",
+          host: DEFAULT_HOST,
+          port: DEFAULT_PORT,
+        },
+        null,
+        2,
+      )}\n`,
+      { flag: "wx" },
+    );
+  } catch (error) {
+    if (error?.code !== "EEXIST") {
+      throw error;
+    }
+  }
   const articles = await listMarkdownFiles(contentRoot);
   if (articles.length === 0) {
     const filePath = path.join(contentRoot, "welcome.md");
@@ -306,10 +353,10 @@ async function ensureContentRoot(contentRoot) {
   }
 }
 
-function parsePort(args) {
+function parsePort(args, configuredPort) {
   const flagIndex = args.findIndex((arg) => arg === "--port");
   if (flagIndex === -1) {
-    return 8888;
+    return configuredPort || DEFAULT_PORT;
   }
   const value = Number.parseInt(args[flagIndex + 1] || "", 10);
   if (!Number.isInteger(value) || value < 0 || value > 65535) {
@@ -2261,7 +2308,7 @@ function getContentType(filePath) {
   return "application/octet-stream";
 }
 
-async function createServer({ contentRoot, embedFonts = false, port = 8888 }) {
+async function createServer({ contentRoot, embedFonts = false, host = DEFAULT_HOST, port = DEFAULT_PORT }) {
   const server = http.createServer(async (req, res) => {
     const requestUrl = new URL(req.url || "/", "http://localhost");
     const pathname = requestUrl.pathname;
@@ -2351,7 +2398,7 @@ async function createServer({ contentRoot, embedFonts = false, port = 8888 }) {
 
   await new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, resolve);
+    server.listen(port, host, resolve);
   });
 
   const address = server.address();
@@ -2361,17 +2408,17 @@ async function createServer({ contentRoot, embedFonts = false, port = 8888 }) {
 
   return {
     server,
-    url: `http://localhost:${address.port}/`,
+    url: `http://${host}:${address.port}/`,
   };
 }
 
 async function runServe(args) {
-  if (args.length > 3) {
+  if (args.length > 5) {
     throw new Error(usage());
   }
-  const { contentRoot, port } = parseServeArgs(args);
+  const { contentRoot, host, port } = parseServeArgs(args);
   await ensureContentRoot(contentRoot);
-  const { server, url } = await createServer({ contentRoot, port });
+  const { server, url } = await createServer({ contentRoot, host, port });
 
   let closing = false;
   let shortcutBinding;

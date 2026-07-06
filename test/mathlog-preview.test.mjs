@@ -6,8 +6,10 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+const SCRIPT_FILE = path.resolve("scripts/mathlog-preview.mjs");
+
 async function startPreviewServer(contentDir) {
-  const args = ["scripts/mathlog-preview.mjs", "serve"];
+  const args = [SCRIPT_FILE, "serve"];
   if (contentDir) {
     args.push(contentDir);
   }
@@ -89,7 +91,7 @@ test("creates an article from the CLI", async () => {
   const contentDir = path.join(root, "public");
   const child = spawn(
     process.execPath,
-    ["scripts/mathlog-preview.mjs", "new", "newArticle001", contentDir],
+    [SCRIPT_FILE, "new", "newArticle001", contentDir],
     {
       cwd: process.cwd(),
       stdio: ["ignore", "pipe", "pipe"],
@@ -107,15 +109,17 @@ test("initializes a content directory", async () => {
   const contentDir = path.join(root, "public");
   const child = spawn(
     process.execPath,
-    ["scripts/mathlog-preview.mjs", "init", contentDir],
+    [SCRIPT_FILE, "init", "public"],
     {
-      cwd: process.cwd(),
+      cwd: root,
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
   const [code] = await once(child, "exit");
   assert.equal(code, 0);
   const markdown = await fsp.readFile(path.join(contentDir, "welcome.md"), "utf8");
+  const config = JSON.parse(await fsp.readFile(path.join(root, "mathlog.config.json"), "utf8"));
+  assert.deepEqual(config, { contentDir: "public", host: "localhost", port: 8888 });
   assert.match(markdown, /^title: welcome/m);
   assert.match(markdown, /^# welcome/m);
 });

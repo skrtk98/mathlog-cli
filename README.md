@@ -36,6 +36,8 @@ npm run new -- my-article
 npm run preview -- path/to/articles --port 8888
 ```
 
+`npm run init` は `mathlog.config.json` を作成します。`contentDir`、`host`、`port` を設定すると `npm run preview` の既定値として使われます。
+
 bin として実行する場合:
 
 ```bash
@@ -55,5 +57,6 @@ npx mathlog version
 - `(1)`, `[1]`, `R1.`, `(R1)`, `[R1]` の箇条書き
 - `![alt](url =500)` の画像最大幅指定
 - Mathlog に合わせた太字赤色、斜体、取り消し線、表、引用、コード、HTML
+- `title`、`tags`、`private` の front matter 表示
 
 公式リファレンス: https://opthub.notion.site/1ca318bcf9ac8195ad0af2a1ae8319e0
