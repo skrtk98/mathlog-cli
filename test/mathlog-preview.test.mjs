@@ -217,6 +217,36 @@ test("renders non-Mathlog diagram fences as code blocks", async () => {
   }
 });
 
+test("applies Mathlog alignment commands inside begin environments", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-begin-align-"));
+  const contentDir = path.join(root, "public");
+  await fsp.mkdir(contentDir, { recursive: true });
+  await fsp.writeFile(
+    path.join(contentDir, "align.md"),
+    [
+      "# align",
+      "",
+      "\\begin{eqnarray}",
+      "\\TextRight",
+      "f(x)",
+      "&=& x^2 - 1",
+      "\\end{eqnarray}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const server = await startPreviewServer(contentDir);
+  try {
+    const html = await fetch(server.url).then((res) => res.text());
+    assert.match(html, /class="mathlog-math mathlog-math--block mathlog-math--right"/);
+    assert.match(html, /\\begin\{eqnarray\}/);
+    assert.doesNotMatch(html, /\\TextRight/);
+  } finally {
+    await server.stop();
+  }
+});
+
 test("reports content state changes for auto reload", async () => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-state-"));
   const contentDir = path.join(root, "public");

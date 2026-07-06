@@ -606,6 +606,25 @@ function getRawLineText(state, line) {
 function parseMathAlignment(content) {
   const match = content.match(/^\s*\\Text(Center|Right|Left)\b\s*/);
   if (!match) {
+    const lines = content.split("\n");
+    for (let index = 0; index < lines.length; index += 1) {
+      const lineMatch = lines[index].match(/^\s*\\Text(Center|Right|Left)\b\s*/);
+      if (!lineMatch) {
+        continue;
+      }
+
+      const nextLines = [...lines];
+      const remainingLine = lines[index].slice(lineMatch[0].length);
+      if (remainingLine.trim().length === 0) {
+        nextLines.splice(index, 1);
+      } else {
+        nextLines[index] = remainingLine;
+      }
+      return {
+        align: lineMatch[1].toLowerCase(),
+        content: nextLines.join("\n").trim(),
+      };
+    }
     return { align: "left", content };
   }
   return {
