@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "preview": "node ./scripts/mathlog-preview.mjs serve",
-    "serve": "node ./scripts/mathlog-preview.mjs serve"
+    "serve": "node ./scripts/mathlog-preview.mjs serve",
+    "test": "node --test"
   },
   "dependencies": {
     "@viz-js/viz": "^3.25.0",
