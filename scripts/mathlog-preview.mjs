@@ -1006,7 +1006,14 @@ function createMarkdownIt() {
     if (count > 0) {
       slug = `${slug}-${count + 1}`;
     }
+    token.tag = `h${Math.min(Number.parseInt(token.tag.slice(1), 10) + 1, 6)}`;
     token.attrSet("id", slug);
+    return self.renderToken(tokens, idx, options);
+  };
+
+  md.renderer.rules.heading_close = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    token.tag = `h${Math.min(Number.parseInt(token.tag.slice(1), 10) + 1, 6)}`;
     return self.renderToken(tokens, idx, options);
   };
 

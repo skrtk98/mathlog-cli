@@ -38,6 +38,7 @@ bash scripts/build.sh "examples/*.md" "exports"
 
 - `$...$`, `$$...$$`, `\begin{...}\end{...}` の MathJax 3.2.2 プレビュー
 - `\TextCenter`, `\TextRight`, `\TextLeft` によるディスプレイ数式の配置
+- `#` から `#####` までの見出し、見出しラベル `## 見出し [label]`
 - `&&&type title [label] ... &&&` の形式ブロック
 - `[[label]]` による形式ブロック参照
 - `(1)`, `[1]`, `R1.`, `(R1)`, `[R1]` の箇条書き
