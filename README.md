@@ -51,6 +51,7 @@ npx mathlog version
 ## 対応済みの Mathlog 構文
 
 - `$...$`, `$$...$$`, `\begin{...}\end{...}` の MathJax 3.2.2 プレビュー
+- `\begin{xy}...\end{xy}` と `\xymatrix` の XyPic 図式プレビュー
 - `\TextCenter`, `\TextRight`, `\TextLeft` によるディスプレイ数式の配置
 - `#` から `#####` までの見出し、見出しラベル `## 見出し [label]`
 - `&&&type title [label] ... &&&` の形式ブロック

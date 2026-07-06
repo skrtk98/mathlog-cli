@@ -55,6 +55,10 @@ f(x)
 &=& (x-1)(x+1)
 \end{eqnarray}
 
+\begin{xy}
+\xymatrix{A \ar[r]^f & B}
+\end{xy}
+
 &&&def 三角関数 [trig-def]
 三角関数は角に対して定まる関数です。
 

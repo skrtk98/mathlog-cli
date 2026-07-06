@@ -18,6 +18,7 @@
     "markdown-it": "^14.1.0",
     "markdown-it-deflist": "^3.0.0",
     "markdown-it-multimd-table": "^4.2.3",
-    "mathjax-full": "^3.2.2"
+    "mathjax-full": "^3.2.2",
+    "mathxyjax3": "^0.8.3"
   }
 }

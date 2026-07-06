@@ -95,6 +95,8 @@ test("renders representative Mathlog syntax", async () => {
     assert.match(html, /\.fw-bold \{\s*color: inherit;\s*font-weight: 700;\s*\}/);
     assert.match(html, /<span class="fw-bold">赤字にしない太字<\/span>/);
     assert.match(html, /<div class="box p-4"><blockquote>HTML内の引用<\/blockquote><\/div>/);
+    assert.match(html, /mathlog-math--server/);
+    assert.match(html, /<mjx-container/);
     assert.match(html, /class="mathlog-box mathlog-box--def" id="trig-def"/);
     assert.match(html, /class="mathlog-reference" href="#trig-def">定義 1 三角関数<\/a>/);
     assert.match(html, /<img src="https:\/\/example.com\/image.png" alt="dummy image" style="max-width: 500px; width: 100%;">/);
@@ -261,6 +263,35 @@ test("applies Mathlog alignment commands inside begin environments", async () =>
     assert.match(html, /class="mathlog-math mathlog-math--block mathlog-math--right"/);
     assert.match(html, /\\begin\{eqnarray\}/);
     assert.doesNotMatch(html, /\\TextRight/);
+  } finally {
+    await server.stop();
+  }
+});
+
+test("server-renders XyPic diagrams", async () => {
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "mathlog-xypic-"));
+  const contentDir = path.join(root, "public");
+  await fsp.mkdir(contentDir, { recursive: true });
+  await fsp.writeFile(
+    path.join(contentDir, "xypic.md"),
+    [
+      "# xypic",
+      "",
+      "\\begin{xy}",
+      "\\xymatrix{A \\ar[r]^f & B}",
+      "\\end{xy}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  const server = await startPreviewServer(contentDir);
+  try {
+    const html = await fetch(server.url).then((res) => res.text());
+    assert.match(html, /class="mathlog-math mathlog-math--block mathlog-math--left mathlog-math--server"/);
+    assert.match(html, /<mjx-container/);
+    assert.match(html, /<svg/);
+    assert.doesNotMatch(html, /\\xymatrix/);
   } finally {
     await server.stop();
   }

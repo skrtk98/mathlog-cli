@@ -8,6 +8,7 @@ import readline from "node:readline";
 import { exec, spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { tex2svgHtml } from "mathxyjax3";
 
 const require = createRequire(import.meta.url);
 const MarkdownIt = require("markdown-it");
@@ -720,13 +721,40 @@ function beginEnvironmentRule(state, startLine, endLine, silent) {
   return true;
 }
 
+function containsXyPic(content) {
+  return /\\begin\{xy\}|\\xymatrix\b/.test(content);
+}
+
+function renderServerMath(content, { display, inline = false }) {
+  try {
+    const html = tex2svgHtml(content, { display });
+    const tag = inline ? "span" : "div";
+    const className = inline
+      ? "mathlog-math mathlog-math--inline mathlog-math--server"
+      : "mathlog-math__server-svg";
+    return `<${tag} class="${className}">${html}</${tag}>`;
+  } catch {
+    const delimiter = inline ? ["\\(", "\\)"] : ["\\[", "\\]"];
+    const tag = inline ? "span" : "div";
+    return `<${tag} class="mathlog-math mathlog-math--${inline ? "inline" : "block"}">${delimiter[0]}${escapeHtml(content)}${delimiter[1]}</${tag}>`;
+  }
+}
+
 function renderMathInline(tokens, idx) {
-  return `<span class="mathlog-math mathlog-math--inline">\\(${escapeHtml(tokens[idx].content)}\\)</span>`;
+  const content = tokens[idx].content;
+  if (containsXyPic(content)) {
+    return renderServerMath(content, { display: false, inline: true });
+  }
+  return `<span class="mathlog-math mathlog-math--inline">\\(${escapeHtml(content)}\\)</span>`;
 }
 
 function renderMathBlock(tokens, idx) {
   const align = tokens[idx].meta?.align || "left";
-  return `<div class="mathlog-math mathlog-math--block mathlog-math--${escapeAttribute(align)}">\\[${escapeHtml(tokens[idx].content)}\\]</div>\n`;
+  const content = tokens[idx].content;
+  if (containsXyPic(content)) {
+    return `<div class="mathlog-math mathlog-math--block mathlog-math--${escapeAttribute(align)} mathlog-math--server">${renderServerMath(content, { display: true })}</div>\n`;
+  }
+  return `<div class="mathlog-math mathlog-math--block mathlog-math--${escapeAttribute(align)}">\\[${escapeHtml(content)}\\]</div>\n`;
 }
 
 function parseMathlogBoxInfo(info) {
