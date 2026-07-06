@@ -7,7 +7,7 @@ DOCS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 INPUT_PATTERN="${1:-${DOCS_DIR}/decks/*.md}"
 OUTPUT_TARGET="${2:-}"
 
-if [[ -z "${MARKDOWN_IT_RENDER_CHROME_PATH:-}" ]]; then
+if [[ -z "${MATHLOG_PREVIEW_CHROME_PATH:-}" ]]; then
   mapfile -t chrome_candidates < <(
     find "${DOCS_DIR}/.local-browsers" \
       -path '*/chrome-headless-shell-linux64/chrome-headless-shell' \
@@ -17,15 +17,15 @@ if [[ -z "${MARKDOWN_IT_RENDER_CHROME_PATH:-}" ]]; then
 
   if [[ ${#chrome_candidates[@]} -eq 0 ]]; then
     echo "[build] chrome-headless-shell not found under ${DOCS_DIR}/.local-browsers" >&2
-    echo "[build] set MARKDOWN_IT_RENDER_CHROME_PATH explicitly or install it with:" >&2
-    echo "[build]   cd 01_docs && npx @puppeteer/browsers install chrome-headless-shell@stable --path ./.local-browsers" >&2
+    echo "[build] set MATHLOG_PREVIEW_CHROME_PATH explicitly or install it with:" >&2
+    echo "[build]   npx @puppeteer/browsers install chrome-headless-shell@stable --path ./.local-browsers" >&2
     exit 1
   fi
 
-  MARKDOWN_IT_RENDER_CHROME_PATH="${chrome_candidates[-1]}"
+  MATHLOG_PREVIEW_CHROME_PATH="${chrome_candidates[-1]}"
 fi
 
-export MARKDOWN_IT_RENDER_CHROME_PATH
+export MATHLOG_PREVIEW_CHROME_PATH
 
 shopt -s nullglob
 md_files=( ${INPUT_PATTERN} )
@@ -68,10 +68,10 @@ for md_file in "${md_files[@]}"; do
       output_file="${OUTPUT_TARGET%/}/${base_name}.pdf"
     fi
     echo "[build] rendering ${md_file}"
-    node "${SCRIPT_DIR}/markdown-it-render.mjs" build "${md_file}" "${output_file}"
+    node "${SCRIPT_DIR}/mathlog-preview.mjs" build "${md_file}" "${output_file}"
   else
     echo "[build] rendering ${md_file}"
-    node "${SCRIPT_DIR}/markdown-it-render.mjs" build "${md_file}"
+    node "${SCRIPT_DIR}/mathlog-preview.mjs" build "${md_file}"
   fi
 done
 

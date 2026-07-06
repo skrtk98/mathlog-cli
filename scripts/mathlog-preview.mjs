@@ -63,8 +63,8 @@ let packageVersion;
 function usage() {
   return [
     "Usage:",
-    "  node 01_docs/scripts/markdown-it-render.mjs serve <input.md> [--port 3030]",
-    "  node 01_docs/scripts/markdown-it-render.mjs build <input.md> [output.pdf] [--timeout-ms 30000]",
+    "  node scripts/mathlog-preview.mjs serve <input.md> [--port 3030]",
+    "  node scripts/mathlog-preview.mjs build <input.md> [output.pdf] [--timeout-ms 30000]",
   ].join("\n");
 }
 
@@ -158,7 +158,7 @@ function formatShortcutValue(interactive) {
 function printBanner() {
   console.log("");
   console.log(`  ${styleCyan("●")}${styleBlue("■")}${styleYellow("▲")}`);
-  console.log(`  ${styleBold("markdown-it-render")}  ${styleBlue(`v${loadPackageVersion()}`)}`);
+  console.log(`  ${styleBold("mathlog-preview")}  ${styleBlue(`v${loadPackageVersion()}`)}`);
   console.log("");
 }
 
@@ -320,7 +320,7 @@ async function formatErrorDetails(error) {
 
 async function printFatalError(error) {
   const details = await formatErrorDetails(error);
-  console.error(`[markdown-it-render] ${details}`);
+  console.error(`[mathlog-preview] ${details}`);
 }
 
 function shellEscape(value) {
@@ -360,7 +360,7 @@ function execShellCommand(command, target) {
 
 function resolveOpenCommand() {
   return (
-    process.env.MARKDOWN_IT_RENDER_OPENER ||
+    process.env.MATHLOG_PREVIEW_OPENER ||
     process.env.BROWSER ||
     "xdg-open"
   );
@@ -368,7 +368,7 @@ function resolveOpenCommand() {
 
 function resolveEditorCommand() {
   return (
-    process.env.MARKDOWN_IT_RENDER_EDITOR ||
+    process.env.MATHLOG_PREVIEW_EDITOR ||
     process.env.VISUAL ||
     process.env.EDITOR ||
     (process.env.TERM_PROGRAM === "vscode" ? "code" : "") ||
@@ -385,7 +385,7 @@ async function openEditor(inputFile) {
   const editorCommand = resolveEditorCommand();
   if (!editorCommand) {
     throw new Error(
-      "No editor configured. Set MARKDOWN_IT_RENDER_EDITOR, VISUAL, or EDITOR.",
+      "No editor configured. Set MATHLOG_PREVIEW_EDITOR, VISUAL, or EDITOR.",
     );
   }
   await execShellCommand(editorCommand, inputFile);
@@ -1628,7 +1628,7 @@ ${highlightCss}
       }
 
       main().catch((error) => {
-        console.error("[markdown-it-render] preview failed", error);
+        console.error("[mathlog-preview] preview failed", error);
         window.__markdownItRenderError__ = {
           message: error?.message || String(error),
           stack: error?.stack || "",
@@ -1740,7 +1740,7 @@ async function createServer({ inputFile, embedFonts = false, port = 3030 }) {
       res.end("Not Found");
     } catch (error) {
       res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
-      res.end(`[markdown-it-render] ${error.message}`);
+      res.end(`[mathlog-preview] ${error.message}`);
     }
   });
 
@@ -1761,7 +1761,7 @@ async function createServer({ inputFile, embedFonts = false, port = 3030 }) {
 }
 
 function detectChromePath() {
-  return process.env.MARKDOWN_IT_RENDER_CHROME_PATH || "";
+  return process.env.MATHLOG_PREVIEW_CHROME_PATH || "";
 }
 
 async function exportPdf(inputFile, outputFile, timeoutMs) {
@@ -1769,7 +1769,7 @@ async function exportPdf(inputFile, outputFile, timeoutMs) {
   if (!chromePath) {
     throw new Error(
       [
-        "MARKDOWN_IT_RENDER_CHROME_PATH is required for PDF export.",
+        "MATHLOG_PREVIEW_CHROME_PATH is required for PDF export.",
         "Point it to a Chrome/Chromium executable.",
       ].join(" "),
     );
@@ -1860,7 +1860,7 @@ async function runServe(args) {
 
   const handleSignal = () => {
     closeServer().catch((error) => {
-      console.error(`[markdown-it-render] ${error.message}`);
+      console.error(`[mathlog-preview] ${error.message}`);
       process.exitCode = 1;
     });
   };

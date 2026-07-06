@@ -1,12 +1,12 @@
 {
-  "name": "docs-html-export",
+  "name": "mathlog-cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "markdown-it-render": "node ./scripts/markdown-it-render.mjs",
-    "serve": "node ./scripts/markdown-it-render.mjs serve",
-    "build": "node ./scripts/markdown-it-render.mjs build"
+    "preview": "node ./scripts/mathlog-preview.mjs serve",
+    "serve": "node ./scripts/mathlog-preview.mjs serve",
+    "build": "node ./scripts/mathlog-preview.mjs build"
   },
   "dependencies": {
     "@viz-js/viz": "^3.25.0",
