@@ -41,6 +41,9 @@ async function startPreviewServer(contentDir) {
       return {
         child,
         url: match[0],
+        getStdout() {
+          return stdout;
+        },
         async stop() {
           if (child.exitCode !== null) {
             return;
@@ -59,6 +62,19 @@ async function startPreviewServer(contentDir) {
   child.kill("SIGTERM");
   throw new Error(`preview server did not print a URL\nstdout:\n${stdout}\nstderr:\n${stderr}`);
 }
+
+test("prints plain preview startup output", async () => {
+  const server = await startPreviewServer();
+  try {
+    const stdout = server.getStdout();
+    assert.match(stdout, /^Mathlog preview: http:\/\/localhost:\d+\//m);
+    assert.match(stdout, /^Content directory: .+\/public$/m);
+    assert.doesNotMatch(stdout, /[●■▲]/);
+    assert.doesNotMatch(stdout, /\u001B\[/);
+  } finally {
+    await server.stop();
+  }
+});
 
 test("renders representative Mathlog syntax", async () => {
   const server = await startPreviewServer();

@@ -53,17 +53,6 @@ const MATHLOG_BOX_TYPES = new Map([
   ["exc", "問題"],
   ["rem", "注意"],
 ]);
-const ANSI = {
-  reset: "\u001B[0m",
-  bold: "\u001B[1m",
-  dim: "\u001B[2m",
-  underline: "\u001B[4m",
-  white: "\u001B[37m",
-  blue: "\u001B[34m",
-  cyan: "\u001B[36m",
-  yellow: "\u001B[33m",
-};
-
 let vizInstancePromise;
 let highlightCssPromise;
 let packageVersion;
@@ -78,45 +67,6 @@ function usage() {
   ].join("\n");
 }
 
-function isDecoratedOutput() {
-  return Boolean(process.stdout.isTTY);
-}
-
-function styleValue(text, ...styles) {
-  if (!isDecoratedOutput()) {
-    return text;
-  }
-  return `${styles.join("")}${text}${ANSI.reset}`;
-}
-
-function styleDim(text) {
-  return styleValue(text, ANSI.dim);
-}
-
-function styleWhite(text) {
-  return styleValue(text, ANSI.white);
-}
-
-function styleBold(text) {
-  return styleValue(text, ANSI.bold);
-}
-
-function styleBlue(text) {
-  return styleValue(text, ANSI.blue);
-}
-
-function styleCyan(text) {
-  return styleValue(text, ANSI.cyan);
-}
-
-function styleYellow(text) {
-  return styleValue(text, ANSI.yellow);
-}
-
-function styleUnderlineWhite(text) {
-  return styleValue(text, ANSI.white, ANSI.underline);
-}
-
 function loadPackageVersion() {
   if (!packageVersion) {
     packageVersion = require(path.join(DOCS_ROOT, "package.json")).version || "0.0.0";
@@ -124,61 +74,12 @@ function loadPackageVersion() {
   return packageVersion;
 }
 
-function formatLabel(label) {
-  return `  ${styleDim(label.padEnd(18))} ${styleWhite(">")}`;
-}
-
-function formatLabelValue(label, value) {
-  return `${formatLabel(label)} ${value}`;
-}
-
-function formatPathValue(filePath) {
-  if (!isDecoratedOutput()) {
-    return filePath;
-  }
-
-  const parsed = path.parse(filePath);
-  const directory = parsed.dir ? `${parsed.dir}${path.sep}` : "";
-  return `${styleDim(directory)}${styleWhite(parsed.base)}`;
-}
-
-function formatShortcutValue(interactive) {
-  if (!interactive) {
-    return "unavailable (non-tty)";
-  }
-  if (!isDecoratedOutput()) {
-    return "restart | open | edit | quit";
-  }
-
-  return [
-    styleUnderlineWhite("r"),
-    styleDim("estart"),
-    styleDim(" | "),
-    styleUnderlineWhite("o"),
-    styleDim("pen"),
-    styleDim(" | "),
-    styleUnderlineWhite("e"),
-    styleDim("dit"),
-    styleDim(" | "),
-    styleUnderlineWhite("q"),
-    styleDim("uit"),
-  ].join("");
-}
-
-function printBanner() {
-  console.log("");
-  console.log(`  ${styleCyan("●")}${styleBlue("■")}${styleYellow("▲")}`);
-  console.log(`  ${styleBold("mathlog-preview")}  ${styleBlue(`v${loadPackageVersion()}`)}`);
-  console.log("");
-}
-
 function printServeSummary({ contentRoot, url, interactive }) {
-  printBanner();
-  console.log(formatLabelValue("content", formatPathValue(contentRoot)));
-  console.log("");
-  console.log(formatLabelValue("preview", styleCyan(url)));
-  console.log(formatLabelValue("shortcuts", formatShortcutValue(interactive)));
-  console.log("");
+  console.log(`Mathlog preview: ${url}`);
+  console.log(`Content directory: ${contentRoot}`);
+  if (interactive) {
+    console.log("Shortcuts: r restart, o open, e edit, q quit");
+  }
 }
 
 function ensureDocsPath(filePath) {
@@ -514,7 +415,7 @@ async function openEditor(inputFile) {
   await execShellCommand(editorCommand, inputFile);
 }
 
-function bindServeShortcuts({ inputFile, url, onQuit }) {
+function bindServeShortcuts({ contentRoot, url, onQuit }) {
   if (!process.stdin.isTTY) {
     return {
       interactive: false,
@@ -552,7 +453,7 @@ function bindServeShortcuts({ inputFile, url, onQuit }) {
       case "r":
         runShortcut(async () => {
           resetRenderState();
-          printServeSummary({ inputFile, url, interactive: true });
+          printServeSummary({ contentRoot, url, interactive: true });
         });
         break;
       case "o":
@@ -562,7 +463,7 @@ function bindServeShortcuts({ inputFile, url, onQuit }) {
         break;
       case "e":
         runShortcut(async () => {
-          await openEditor(inputFile);
+          await openEditor(contentRoot);
         });
         break;
       case "q":
@@ -2572,7 +2473,7 @@ async function runServe(args) {
   process.on("SIGTERM", handleSignal);
 
   shortcutBinding = bindServeShortcuts({
-    inputFile: contentRoot,
+    contentRoot,
     url,
     onQuit: async () => {
       await closeServer();
@@ -2599,7 +2500,7 @@ async function runNew(args) {
   }
   const contentRoot = path.resolve(process.cwd(), args[1] || DEFAULT_CONTENT_DIR);
   const article = await createArticleFile(contentRoot, args[0]);
-  console.log(formatLabelValue("created", formatPathValue(article.filePath)));
+  console.log(`Created article: ${article.filePath}`);
 }
 
 async function runInit(args) {
@@ -2608,13 +2509,12 @@ async function runInit(args) {
   }
   const contentRoot = path.resolve(process.cwd(), args[0] || DEFAULT_CONTENT_DIR);
   const result = await initializeContentRoot(contentRoot);
-  printBanner();
-  console.log(formatLabelValue("content", formatPathValue(result.contentRoot)));
+  console.log("Initialized Mathlog preview project.");
+  console.log(`Content directory: ${result.contentRoot}`);
   if (result.createdSample) {
-    console.log(formatLabelValue("sample", formatPathValue(result.createdSample)));
+    console.log(`Created sample article: ${result.createdSample}`);
   }
-  console.log(formatLabelValue("next", "npm run preview"));
-  console.log("");
+  console.log("Next: npm run preview");
 }
 
 async function main() {
