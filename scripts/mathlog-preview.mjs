@@ -1710,6 +1710,26 @@ ${highlightCss}
         text-decoration-thickness: 0.08em;
       }
 
+      .fw-bold {
+        color: inherit;
+        font-weight: 700;
+      }
+
+      .border,
+      .box {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+
+      .p-4 {
+        padding: 1.5rem;
+      }
+
+      .box .title {
+        margin-bottom: 0.5rem;
+        font-weight: 700;
+      }
+
       code {
         font-family: ${monoFontFamily};
         background: var(--code-bg);

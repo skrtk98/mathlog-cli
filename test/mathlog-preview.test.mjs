@@ -92,6 +92,9 @@ test("renders representative Mathlog syntax", async () => {
     assert.match(html, /<h2 id="mathlog-syntax-preview">Mathlog syntax preview<\/h2>/);
     assert.match(html, /<h3 id="heading-label">ラベル付き見出し<\/h3>/);
     assert.match(html, /class="mathlog-math mathlog-math--inline">\\\(x_i&gt;0\\\)<\/span>/);
+    assert.match(html, /\.fw-bold \{\s*color: inherit;\s*font-weight: 700;\s*\}/);
+    assert.match(html, /<span class="fw-bold">赤字にしない太字<\/span>/);
+    assert.match(html, /<div class="box p-4"><blockquote>HTML内の引用<\/blockquote><\/div>/);
     assert.match(html, /class="mathlog-box mathlog-box--def" id="trig-def"/);
     assert.match(html, /class="mathlog-reference" href="#trig-def">定義 1 三角関数<\/a>/);
     assert.match(html, /<img src="https:\/\/example.com\/image.png" alt="dummy image" style="max-width: 500px; width: 100%;">/);

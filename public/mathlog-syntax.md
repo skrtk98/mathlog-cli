@@ -15,6 +15,10 @@ private: false
 
 **太字赤色**、*斜体*、***斜体太字赤色***、~~取り消し~~。
 
+<span class="fw-bold">赤字にしない太字</span>
+
+<div class="box p-4"><blockquote>HTML内の引用</blockquote></div>
+
 ![dummy image](https://example.com/image.png =500)
 
 ![local svg](assets/sample.svg =240)
